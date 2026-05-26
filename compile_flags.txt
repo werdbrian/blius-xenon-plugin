@@ -1,0 +1,6 @@
+--target=wasm32
+-std=c++17
+-nostdlib
+-fno-exceptions
+-fno-rtti
+-Iinclude

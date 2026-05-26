@@ -75,8 +75,6 @@ static constexpr float kBashCd    = 5.f;    // manual bash cooldown tracking
 // Whip Shot hold timer
 static float    g_whipHoldEnd     = 0.f;
 static constexpr float kWhipHold  = 0.12f;
-static float    g_velSmoothAlpha  = 0.25f;  // EMA factor for target velocity (0=frozen, 1=raw)
-static float    g_whipAimPixels   = 40.f;   // fire only when prediction within N px of center
 
 // Burst Combo: Flail → Bash → Flail → Whip Shot (230 dmg, KOs 225 HP)
 enum ComboPhase {
@@ -198,8 +196,6 @@ extern "C" void on_load()
     g_meleeHitboxScale = Config::GetFloat("meleeHitboxScale", 1.3f);
     g_whipFovRadius    = Config::GetFloat("whipFovRadius",    200.f);
     g_whipHitboxScale  = Config::GetFloat("whipHitboxScale",  1.f);
-    g_velSmoothAlpha   = Config::GetFloat("velSmoothAlpha",   0.25f);
-    g_whipAimPixels    = Config::GetFloat("whipAimPixels",    40.f);
     for (int i = 0; i < kAimBoneCount; i++)
     {
         TextBuilder<24> k; k.put("meleeBone").putInt(i);
@@ -254,8 +250,6 @@ extern "C" void on_unload()
     Config::SetFloat("meleeHitboxScale", g_meleeHitboxScale);
     Config::SetFloat("whipFovRadius",    g_whipFovRadius);
     Config::SetFloat("whipHitboxScale",  g_whipHitboxScale);
-    Config::SetFloat("velSmoothAlpha",   g_velSmoothAlpha);
-    Config::SetFloat("whipAimPixels",    g_whipAimPixels);
     for (int i = 0; i < kAimBoneCount; i++)
     {
         TextBuilder<24> k; k.put("meleeBone").putInt(i);
@@ -522,31 +516,17 @@ extern "C" void on_frame(float dt)
     // -------------------------------------------------------
     // Auto Whip trigger — only when whip would secure the kill
     // -------------------------------------------------------
-    float   whipTtt  = (g_whipSpeed > 0.f) ? g_targetDist / g_whipSpeed : 0.f;
-    Vector3 whipBase = g_targetBodyPos.IsValid() ? g_targetBodyPos : g_targetHeadPos;
-    Vector3 whipPred = { whipBase.x + g_targetVelocity.x * whipTtt,
-                         whipBase.y + g_targetVelocity.y * whipTtt,
-                         whipBase.z + g_targetVelocity.z * whipTtt };
-
-    bool whipReady = !bashActive && !comboWaiting && g_autoWhip && g_targetValid && g_targetVisible
+    bool whipReady = false;
+    if (!bashActive && !comboWaiting && g_autoWhip && g_targetValid && g_targetVisible
         && g_targetDist >= g_whipMinDist && g_targetDist <= g_whipMaxDist
         && g_targetHp > 0.f && g_targetHp <= g_whipKillHp
-        && g_whipHoldEnd <= 0.f;
-
-    if (whipReady)
+        && g_whipHoldEnd <= 0.f)
     {
-        // Pre-aim at predicted position — camera catches up over frames
-        AimAtPosition(whipPred, g_whipStiffness);
-
-        // Gate fire on how close prediction is to screen center
         SkillCooldown s1 = local.IsValid() ? local.GetSkill1Cooldown() : SkillCooldown{};
         if (!s1.IsOnCooldown())
         {
-            Vector2 predScr, sz = ScreenSize(), ctr = { sz.x * 0.5f, sz.y * 0.5f };
-            bool aimed = !whipPred.IsValid()
-                         || (WorldToScreen(whipPred, predScr) && ScreenDist(predScr, ctr) <= g_whipAimPixels);
-            if (aimed)
-                g_whipHoldEnd = now + kWhipHold;
+            g_whipHoldEnd = now + kWhipHold;
+            whipReady = true;
         }
     }
     bool whipQueued = (!bashActive && g_whipHoldEnd > 0.f);
@@ -732,13 +712,9 @@ extern "C" void on_render()
                 if (g_prevHeadTime > 0.f && (nowV - g_prevHeadTime) > 0.001f)
                 {
                     float invDt = 1.f / (nowV - g_prevHeadTime);
-                    float rawVx = (headPos.x - g_prevHeadPos.x) * invDt;
-                    float rawVy = (headPos.y - g_prevHeadPos.y) * invDt;
-                    float rawVz = (headPos.z - g_prevHeadPos.z) * invDt;
-                    float a = g_velSmoothAlpha;
-                    g_targetVelocity.x = a * rawVx + (1.f - a) * g_targetVelocity.x;
-                    g_targetVelocity.y = a * rawVy + (1.f - a) * g_targetVelocity.y;
-                    g_targetVelocity.z = a * rawVz + (1.f - a) * g_targetVelocity.z;
+                    g_targetVelocity.x = (headPos.x - g_prevHeadPos.x) * invDt;
+                    g_targetVelocity.y = (headPos.y - g_prevHeadPos.y) * invDt;
+                    g_targetVelocity.z = (headPos.z - g_prevHeadPos.z) * invDt;
                 }
                 g_prevHeadPos  = headPos;
                 g_prevHeadTime = nowV;
@@ -823,8 +799,6 @@ extern "C" void on_menu()
         ImGui::SliderFloat("Whip Kill HP",     &g_whipKillHp,     0.f,   600.f);
         ImGui::SliderFloat("Whip FOV Radius",   &g_whipFovRadius,   50.f,  500.f);
         ImGui::SliderFloat("Whip Hitbox Scale", &g_whipHitboxScale,  0.5f,  3.f);
-        ImGui::SliderFloat("Whip Aim Pixels",   &g_whipAimPixels,    5.f,   200.f);
-        ImGui::SliderFloat("Vel Smooth Alpha",  &g_velSmoothAlpha,   0.05f, 1.f);
         ImGui::SliderFloat("Target Max Range",&g_targetMaxRange, 5.f,  60.f);
         ImGui::SliderFloat("Whip Speed",      &g_whipSpeed,    5.f,   80.f);
         ImGui::SliderFloat("Bash Range (m)",  &g_bashRange,    1.f,   10.f);

@@ -422,6 +422,15 @@ extern "C" void on_frame(float dt)
 
     if (g_combo != CB_IDLE)
     {
+        if (!held)
+        {
+            ReleaseGameButton(GameButton::LMouse);
+            ReleaseGameButton(GameButton::RMouse);
+            ReleaseGameButton(GameButton::Skill1);
+            g_combo  = CB_IDLE;
+            g_comboT = 0.f;
+            return;
+        }
         g_comboT += dt;
         if (g_targetValid)
             AimAtBone(g_cachedTarget, g_bestBone, g_meleeStiffness);

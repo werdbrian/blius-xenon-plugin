@@ -74,7 +74,9 @@ static constexpr float kBashCd    = 5.f;    // manual bash cooldown tracking
 
 // Whip Shot hold timer
 static float    g_whipHoldEnd     = 0.f;
-static constexpr float kWhipHold  = 0.12f;
+static float    g_whipPreAimEnd   = 0.f;
+static constexpr float kWhipHold    = 0.12f;
+static constexpr float kWhipPreAim  = 0.05f;  // aim at prediction this long before firing
 
 // Burst Combo: Flail → Bash → Flail → Whip Shot (230 dmg, KOs 225 HP)
 enum ComboPhase {
@@ -509,7 +511,8 @@ extern "C" void on_frame(float dt)
     {
         ReleaseGameButton(GameButton::LMouse);
         ReleaseGameButton(GameButton::Skill1);
-        g_whipHoldEnd = 0.f;
+        g_whipHoldEnd   = 0.f;
+        g_whipPreAimEnd = 0.f;
         if (!repairFiring) AimResetSmoothing();
         return;
     }
@@ -520,48 +523,73 @@ extern "C" void on_frame(float dt)
     bool comboWaiting = g_autoCombo && g_combo == CB_IDLE && now >= g_comboCdEnd
         && g_targetValid && g_targetDist <= g_comboRange
         && g_targetHp > 0.f && g_targetHp <= g_comboKillHp;
-    if (comboWaiting) g_whipHoldEnd = 0.f;
+    if (comboWaiting) { g_whipHoldEnd = 0.f; g_whipPreAimEnd = 0.f; }
 
     // -------------------------------------------------------
-    // Auto Whip trigger — only when whip would secure the kill
+    // Auto Whip trigger — pre-aim at prediction, then fire
     // -------------------------------------------------------
-    bool whipReady = false;
-    if (!bashActive && !comboWaiting && g_autoWhip && g_targetValid && g_targetVisible
+    bool whipReady    = false;
+    bool whipPreAiming = false;
+    bool whipConditions = !bashActive && !comboWaiting && g_autoWhip && g_targetValid && g_targetVisible
         && g_targetDist >= g_whipMinDist && g_targetDist <= g_whipMaxDist
-        && g_targetHp > 0.f && g_targetHp <= g_whipKillHp
-        && g_whipHoldEnd <= 0.f)
+        && g_targetHp > 0.f && g_targetHp <= g_whipKillHp;
+
+    if (whipConditions && g_whipHoldEnd <= 0.f)
     {
-        SkillCooldown s1 = local.IsValid() ? local.GetSkill1Cooldown() : SkillCooldown{};
-        if (!s1.IsOnCooldown())
+        if (g_whipPreAimEnd <= 0.f)
         {
-            g_whipHoldEnd = now + kWhipHold;
+            SkillCooldown s1 = local.IsValid() ? local.GetSkill1Cooldown() : SkillCooldown{};
+            if (!s1.IsOnCooldown())
+            {
+                g_whipPreAimEnd = now + kWhipPreAim;
+                whipPreAiming = true;
+                whipReady = true;
+            }
+        }
+        else if (now < g_whipPreAimEnd)
+        {
+            whipPreAiming = true;
             whipReady = true;
         }
+        else
+        {
+            g_whipHoldEnd   = now + kWhipHold;
+            g_whipPreAimEnd = 0.f;
+            whipReady = true;
+        }
+    }
+    else if (!whipConditions && g_whipHoldEnd <= 0.f)
+    {
+        g_whipPreAimEnd = 0.f;
     }
     bool whipQueued = (!bashActive && g_whipHoldEnd > 0.f);
 
     // -------------------------------------------------------
-    // Auto Whip Shot press
+    // Auto Whip Shot press (aim during both pre-aim and fire)
     // -------------------------------------------------------
     bool whipFiring = false;
-    if (whipQueued && !repairFiring)
+    if ((whipQueued || whipPreAiming) && !repairFiring)
     {
-        if (now < g_whipHoldEnd)
+        float   ttt  = (g_whipSpeed > 0.f) ? g_targetDist / g_whipSpeed : 0.f;
+        Vector3 base = g_targetBodyPos.IsValid() ? g_targetBodyPos : g_targetHeadPos;
+        Vector3 pred = base;
+        pred.x += g_targetVelocity.x * ttt;
+        pred.y += g_targetVelocity.y * ttt;
+        pred.z += g_targetVelocity.z * ttt;
+        AimAtPosition(pred, g_whipStiffness);
+
+        if (whipQueued)
         {
-            float   ttt  = (g_whipSpeed > 0.f) ? g_targetDist / g_whipSpeed : 0.f;
-            Vector3 base = g_targetBodyPos.IsValid() ? g_targetBodyPos : g_targetHeadPos;
-            Vector3 pred = base;
-            pred.x += g_targetVelocity.x * ttt;
-            pred.y += g_targetVelocity.y * ttt;
-            pred.z += g_targetVelocity.z * ttt;
-            AimAtPosition(pred, g_whipStiffness);
-            PressGameButton(GameButton::Skill1);
-            whipFiring = true;
-        }
-        else
-        {
-            ReleaseGameButton(GameButton::Skill1);
-            g_whipHoldEnd = 0.f;
+            if (now < g_whipHoldEnd)
+            {
+                PressGameButton(GameButton::Skill1);
+                whipFiring = true;
+            }
+            else
+            {
+                ReleaseGameButton(GameButton::Skill1);
+                g_whipHoldEnd = 0.f;
+            }
         }
     }
 
@@ -693,6 +721,7 @@ extern "C" void on_render()
                 if (!headWorld.IsValid()) continue;
                 float dist3d = WorldDist(myPos3, p.GetPosition());
                 if (dist3d > g_targetMaxRange) continue;
+                if (!p.IsTargetable()) continue;  // skip sleeping/CC'd enemies
                 Vector2 headScreen;
                 if (!WorldToScreen(headWorld, headScreen)) continue;
                 float fovCheck = (dist3d <= g_meleeRange) ? g_meleeFovRadius : g_whipFovRadius;

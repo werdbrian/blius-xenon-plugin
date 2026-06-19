@@ -9,7 +9,7 @@ using namespace xenon;
 static float    g_stiffness      = 30.f;
 static float    g_slashStiffness = 0.f;   // 0 = instant snap to target when slashing
 static float    g_fovRadius    = 200.f;
-static int      g_triggerKey   = 1;     // set via keymap scanner
+static Hotkey   g_triggerKey(1);  // default LMB; click-to-bind in menu
 static float    g_slashRange   = 5.f;   // meters — leap if closer than this
 static int32_t  g_cachedTarget = -1;
 static bool     g_targetValid  = false;
@@ -49,7 +49,7 @@ extern "C" void on_load()
     g_stiffness      = Config::GetFloat("stiffness",      30.f);
     g_slashStiffness = Config::GetFloat("slashStiffness", 0.f);
     g_fovRadius     = Config::GetFloat("fovRadius",     200.f);
-    g_triggerKey    = Config::GetInt("triggerKey",      1);
+    g_triggerKey.Load("triggerKey");
     g_slashRange    = Config::GetFloat("slashRange",    5.f);
     g_meleeDelaySet = Config::GetFloat("meleeDelay",    0.15f);
     g_meleeHoldSet  = Config::GetFloat("meleeHold",     0.10f);
@@ -70,7 +70,7 @@ extern "C" void on_unload()
     Config::SetFloat("stiffness",       g_stiffness);
     Config::SetFloat("slashStiffness",  g_slashStiffness);
     Config::SetFloat("fovRadius",  g_fovRadius);
-    Config::SetInt("triggerKey",   g_triggerKey);
+    g_triggerKey.Save("triggerKey");
     Config::SetFloat("slashRange", g_slashRange);
     Config::SetFloat("meleeDelay", g_meleeDelaySet);
     Config::SetFloat("meleeHold",  g_meleeHoldSet);
@@ -110,11 +110,13 @@ extern "C" void on_frame(float dt)
     (void)dt;
 
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    if (g_heroId != 0 && LocalPlayer().GetHeroId() != g_heroId) return;
 
-    if (!IsKeyDown(g_triggerKey) || g_cachedTarget < 0)
+    g_triggerKey.Update();
+
+    if (!g_triggerKey.IsDown() || g_cachedTarget < 0)
     {
-        if (!IsKeyDown(g_triggerKey))
+        if (!g_triggerKey.IsDown())
         {
             g_cachedTarget = -1;
             g_doingSlash   = false;
@@ -207,7 +209,7 @@ extern "C" void on_frame(float dt)
 extern "C" void on_render()
 {
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    if (g_heroId != 0 && LocalPlayer().GetHeroId() != g_heroId) return;
 
     Vector2 sz = ScreenSize();
     if (sz.x <= 0 || sz.y <= 0) return;
@@ -216,7 +218,7 @@ extern "C" void on_render()
     float cy = sz.y * 0.5f;
     Vector2 center = { cx, cy };
 
-    bool held = IsKeyDown(g_triggerKey);
+    bool held = g_triggerKey.IsDown();
 
     g_targetValid = false;
     g_playerCount = 0;
@@ -342,7 +344,7 @@ extern "C" void on_menu()
         ImGui::SliderFloat("Smoothing",        &g_stiffness,      0.f, 1500.f);
         ImGui::SliderFloat("Slash Smoothing",  &g_slashStiffness, 0.f, 1500.f);
         ImGui::SliderFloat("FOV Radius",  &g_fovRadius,  10.f,  500.f);
-        ImGui::SliderInt("Trigger Key",   &g_triggerKey, 0,     31);
+        g_triggerKey.Render("Trigger Key");
         ImGui::SliderFloat("Slash Range",   &g_slashRange,    1.f,  20.f);
         ImGui::SliderFloat("Melee Delay",   &g_meleeDelaySet, 0.f,  0.5f);
         ImGui::SliderFloat("Melee Hold",    &g_meleeHoldSet,  0.05f, 0.3f);
@@ -356,7 +358,7 @@ extern "C" void on_menu()
         ImGui::Checkbox("Lock to current hero", &g_heroLock);
         if (g_heroLock != prevLock)
         {
-            if (g_heroLock) g_heroId = GetCurrentHero();
+            if (g_heroLock) g_heroId = LocalPlayer().GetHeroId();
             else            g_heroId = 0;
         }
     }

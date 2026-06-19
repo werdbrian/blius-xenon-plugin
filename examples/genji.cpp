@@ -1,4 +1,13 @@
-﻿#include <xenon/SDK.hpp>
+﻿// Genji V1 Plugin (hero-specific — only loads on Genji)
+// Two features:
+//   1. Dash Combo  — one key press runs the full sequence: snap aim -> Swift Strike
+//      (Skill1) -> wait for dash to finish -> re-aim selected bone -> RMouse -> Melee.
+//      State machine: CP_IDLE -> CP_DETECT -> CP_AIM -> CP_MELEE.
+//   2. Dash Assist — when YOU manually press Swift Strike, it locks the target you were
+//      looking at, then after the dash optionally auto-RClicks / auto-melees.
+// Close Aim Adjust nudges aim upward at point-blank range. Tunable FOV, bone, delays,
+// max distance, and smoothing in the menu.
+#include <xenon/SDK.hpp>
 using namespace xenon;
 
 static void PulseGameButton(uint32_t btn) { PressGameButton(btn); ReleaseGameButton(btn); }

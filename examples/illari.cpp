@@ -7,7 +7,7 @@ using namespace xenon;
 static float    g_stiffness       = 30.f;
 static float    g_fovRadius       = 200.f;
 static int      g_targetMode      = 0; // 0=closest crosshair, 1=lowest HP
-static int      g_triggerKey      = 1;
+static Hotkey   g_triggerKey(1);  // default LMB; click-to-bind in menu
 static float    g_chargeThreshold = 1.0f;  // fire when charge >= this (0.0-1.0)
 static float    g_killHp          = 25.f;  // also fire below full charge if target HP <= this
 static int32_t  g_cachedTarget    = -1;
@@ -51,7 +51,7 @@ extern "C" void on_load()
     g_stiffness       = Config::GetFloat("stiffness",       30.f);
     g_fovRadius       = Config::GetFloat("fovRadius",       200.f);
     g_targetMode      = Config::GetInt("targetMode",        0);
-    g_triggerKey      = Config::GetInt("triggerKey",        1);
+    g_triggerKey.Load("triggerKey");
     g_chargeThreshold = Config::GetFloat("chargeThreshold2", 1.0f);
     g_killHp          = Config::GetFloat("killHp",          25.f);
     g_enabled         = Config::GetBool("enabled",          true);
@@ -77,7 +77,7 @@ extern "C" void on_unload()
     Config::SetFloat("stiffness",       g_stiffness);
     Config::SetFloat("fovRadius",       g_fovRadius);
     Config::SetInt("targetMode",        g_targetMode);
-    Config::SetInt("triggerKey",        g_triggerKey);
+    g_triggerKey.Save("triggerKey");
     Config::SetFloat("chargeThreshold2", g_chargeThreshold);
     Config::SetFloat("killHp",          g_killHp);
     Config::SetBool("enabled",          g_enabled);
@@ -122,11 +122,13 @@ extern "C" void on_frame(float dt)
     (void)dt;
 
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::Illari) return; }  // dormant on any other hero
 
-    if (!IsKeyDown(g_triggerKey) || g_cachedTarget < 0)
+    g_triggerKey.Update();
+
+    if (!g_triggerKey.IsDown() || g_cachedTarget < 0)
     {
-        if (!IsKeyDown(g_triggerKey))
+        if (!g_triggerKey.IsDown())
         {
             g_cachedTarget = -1;
             AimResetSmoothing();
@@ -182,9 +184,9 @@ extern "C" void on_frame(float dt)
 extern "C" void on_render()
 {
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::Illari) return; }  // dormant on any other hero
 
-    bool held = IsKeyDown(g_triggerKey);
+    bool held = g_triggerKey.IsDown();
 
     // Fast path: trigger not held — skip all per-player work
     if (!held)
@@ -280,7 +282,7 @@ extern "C" void on_menu()
         ImGui::SliderFloat("Smoothing (0=snap)", &g_stiffness,       0.f,   1500.f);
         ImGui::SliderFloat("FOV Radius",       &g_fovRadius,       10.f,  500.f);
         ImGui::Combo("Target Mode", &g_targetMode, "Closest Crosshair\0Lowest HP\0");
-        ImGui::SliderInt("Trigger Key",        &g_triggerKey,      0,     31);
+        g_triggerKey.Render("Trigger Key");
         ImGui::SliderFloat("Charge Threshold", &g_chargeThreshold, 0.f,   1.0f);
         ImGui::SliderFloat("Kill HP",          &g_killHp,          0.f,   200.f);
         ImGui::SliderFloat("Hitbox Scale",     &g_hitboxScale,     0.7f,  1.5f);
@@ -298,7 +300,7 @@ extern "C" void on_menu()
         ImGui::Checkbox("Lock to current hero", &g_heroLock);
         if (g_heroLock != prevLock)
         {
-            if (g_heroLock) g_heroId = GetCurrentHero();
+            if (g_heroLock) g_heroId = LocalPlayer().GetHeroId();
             else            g_heroId = 0;
         }
     }

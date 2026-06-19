@@ -12,8 +12,8 @@ static bool  g_enabled          = true;
 static float g_stiffness        = 30.f;
 static float g_fovRadius        = 200.f;
 static float g_hitboxScale      = 1.0f;
-static int   g_triggerKey       = 18;    // VK 18 = Left Alt — beam key
-static int   g_orbKey           = 0;     // separate orb key (0 = same as beam key)
+static Hotkey g_triggerKey(18);  // beam key; default Left Alt
+static Hotkey g_orbKey(0);  // orb key; unbound (vk 0) = use beam key
 
 // Auto primary (beam — hitscan, no prediction needed)
 static bool  g_autoPrimary      = true;
@@ -102,8 +102,8 @@ extern "C" void on_load()
     g_stiffness       = Config::GetFloat("stiffness",      30.f);
     g_fovRadius       = Config::GetFloat("fovRadius",      200.f);
     g_hitboxScale     = Config::GetFloat("hitboxScale",    1.0f);
-    g_triggerKey      = Config::GetInt("triggerKey",       18);
-    g_orbKey          = Config::GetInt("orbKey",           0);
+    g_triggerKey.Load("triggerKey");
+    g_orbKey.Load("orbKey");
     g_autoPrimary     = Config::GetBool("autoPrimary",     true);
     g_autoSecondary   = Config::GetBool("autoSecondary",   true);
     g_secArcFactor    = Config::GetFloat("secArcFactor",   0.04f);
@@ -132,8 +132,8 @@ extern "C" void on_unload()
     Config::SetFloat("stiffness",     g_stiffness);
     Config::SetFloat("fovRadius",     g_fovRadius);
     Config::SetFloat("hitboxScale",   g_hitboxScale);
-    Config::SetInt("triggerKey",      g_triggerKey);
-    Config::SetInt("orbKey",          g_orbKey);
+    g_triggerKey.Save("triggerKey");
+    g_orbKey.Save("orbKey");
     Config::SetBool("autoPrimary",    g_autoPrimary);
     Config::SetBool("autoSecondary",  g_autoSecondary);
     Config::SetFloat("secArcFactor",  g_secArcFactor);
@@ -161,7 +161,10 @@ extern "C" void on_hero_changed(uint64_t) { g_cachedTarget = -1; AimResetSmoothi
 extern "C" void on_frame(float dt)
 {
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    if (g_heroId != 0 && LocalPlayer().GetHeroId() != g_heroId) return;
+
+    g_triggerKey.Update();
+    g_orbKey.Update();
 
     Entity local = LocalPlayer();
     if (!local.IsValid()) return;
@@ -184,8 +187,8 @@ extern "C" void on_frame(float dt)
             ReleaseGameButton(GameButton::Skill1);
     }
 
-    bool beamHeld = IsKeyDown(g_triggerKey);
-    bool orbHeld  = (g_orbKey > 0) ? IsKeyDown(g_orbKey) : beamHeld;
+    bool beamHeld = g_triggerKey.IsDown();
+    bool orbHeld  = (g_orbKey.vk != 0) ? g_orbKey.IsDown() : beamHeld;
     if (g_switchCooldown > 0.f) g_switchCooldown -= dt;
     bool hasTarget = (beamHeld || orbHeld) && g_targetValid && g_cachedTarget >= 0;
 
@@ -254,9 +257,9 @@ extern "C" void on_frame(float dt)
 extern "C" void on_render()
 {
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    if (g_heroId != 0 && LocalPlayer().GetHeroId() != g_heroId) return;
 
-    bool held = IsKeyDown(g_triggerKey) || (g_orbKey > 0 && IsKeyDown(g_orbKey));
+    bool held = g_triggerKey.IsDown() || (g_orbKey.vk != 0 && g_orbKey.IsDown());
 
     if (!held)
     {
@@ -515,8 +518,8 @@ extern "C" void on_menu()
     if (!g_enabled) return;
     ImGui::Separator();
 
-    ImGui::SliderInt("Beam Key (VK)", &g_triggerKey, 0, 255);
-    ImGui::SliderInt("Orb Key (VK, 0=same)", &g_orbKey, 0, 255);
+    g_triggerKey.Render("Beam Key");
+    g_orbKey.Render("Orb Key (unbound = same as beam)");
     ImGui::SliderFloat("Smoothing", &g_stiffness, 0.f, 1500.f);
     ImGui::SliderFloat("FOV Radius", &g_fovRadius, 10.f, 500.f);
     ImGui::SliderFloat("Hitbox Scale", &g_hitboxScale, 0.5f, 2.f);
@@ -558,7 +561,7 @@ extern "C" void on_menu()
     ImGui::Checkbox("Lock to current hero", &g_heroLock);
     if (g_heroLock != prevLock)
     {
-        if (g_heroLock) g_heroId = GetCurrentHero();
+        if (g_heroLock) g_heroId = LocalPlayer().GetHeroId();
         else            g_heroId = 0;
     }
 }

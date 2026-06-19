@@ -18,7 +18,7 @@ static float    g_stiffness       = 30.f;
 static float    g_fovRadius       = 150.f;
 static int      g_targetMode      = TargetMode::ClosestCrosshair;
 static bool     g_triggerBot      = false;
-static int      g_triggerKey      = -1;
+static Hotkey   g_triggerKey(0);  // unbound (vk 0) = always on; click-to-bind in menu
 static float    g_chargeThreshold = 1.0f;
 static int32_t  g_cachedTarget    = -1;
 static bool     g_targetValid     = false;
@@ -45,7 +45,7 @@ extern "C" void on_load()
     g_fovRadius       = Config::GetFloat("fovRadius", 150.f);
     g_targetMode      = Config::GetInt("targetMode", 0);
     g_triggerBot      = Config::GetBool("triggerBot", false);
-    g_triggerKey      = Config::GetInt("triggerKey", -1);
+    g_triggerKey.Load("triggerKey");
     g_chargeThreshold = Config::GetFloat("chargeThreshold2", 1.0f);
     g_enabled         = Config::GetBool("enabled", true);
     uint32_t heroLo   = (uint32_t)Config::GetInt("heroId_lo", (int32_t)(HeroId::Widowmaker & 0xFFFFFFFF));
@@ -59,7 +59,7 @@ extern "C" void on_unload()
     Config::SetFloat("fovRadius",       g_fovRadius);
     Config::SetInt("targetMode",        g_targetMode);
     Config::SetBool("triggerBot",       g_triggerBot);
-    Config::SetInt("triggerKey",        g_triggerKey);
+    g_triggerKey.Save("triggerKey");
     Config::SetFloat("chargeThreshold2", g_chargeThreshold);
     Config::SetBool("enabled",          g_enabled);
     Config::SetInt("heroId_lo", (int32_t)(g_heroId & 0xFFFFFFFF));
@@ -124,7 +124,9 @@ extern "C" void on_frame(float dt)
     (void)dt;
 
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    if (g_heroId != 0 && LocalPlayer().GetHeroId() != g_heroId) return;
+
+    g_triggerKey.Update();
 
     if (!IsKeyDown(1) || g_cachedTarget < 0)
     {
@@ -141,7 +143,7 @@ extern "C" void on_frame(float dt)
 
     if (g_triggerBot)
     {
-        bool keyHeld = (g_triggerKey < 0) || IsKeyDown(g_triggerKey);
+        bool keyHeld = (g_triggerKey.vk == 0) || g_triggerKey.IsDown();
         float charge = GetWidowCharge();
         if (keyHeld && charge >= g_chargeThreshold && AimHitsHitbox(g_cachedTarget, 1.0f) >= 0)
             PressGameButton(GameButton::ScopedShoot);
@@ -154,7 +156,7 @@ extern "C" void on_frame(float dt)
 extern "C" void on_render()
 {
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    if (g_heroId != 0 && LocalPlayer().GetHeroId() != g_heroId) return;
 
     Vector2 sz = ScreenSize();
     if (sz.x <= 0 || sz.y <= 0) return;
@@ -290,7 +292,7 @@ extern "C" void on_menu()
         ImGui::Checkbox("Trigger Bot", &g_triggerBot);
         if (g_triggerBot)
         {
-            ImGui::SliderInt("Trigger Key (-1 = always)", &g_triggerKey, -1, 31);
+            g_triggerKey.Render("Trigger Key (unbound = always)");
             ImGui::SliderFloat("Charge Threshold", &g_chargeThreshold, 0.f, 1.0f);
         }
         ImGui::Separator();
@@ -301,7 +303,7 @@ extern "C" void on_menu()
         ImGui::Checkbox("Lock to current hero", &g_heroLock);
         if (g_heroLock != prevLock)
         {
-            if (g_heroLock) g_heroId = GetCurrentHero();
+            if (g_heroLock) g_heroId = LocalPlayer().GetHeroId();
             else            g_heroId = 0;
         }
     }

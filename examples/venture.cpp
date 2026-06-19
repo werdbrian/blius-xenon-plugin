@@ -25,7 +25,7 @@ static float g_reactionDotMin    = 0.85f; // require they're facing us within ~3
 static float g_reactionPrevHp    = 0.f;
 static int32_t g_reactionTargetIdx = -1;
 static float g_reactionTimer     = 0.f;
-static int   g_triggerKey     = 18;     // VK 18 = Left Alt
+static Hotkey g_triggerKey(18);  // default Left Alt; click-to-bind in menu
 
 static bool  g_autoMelee      = true;
 static float g_meleeRange     = 3.f;
@@ -153,7 +153,7 @@ extern "C" void on_load()
     g_reactionMinDmg  = Config::GetFloat("reactionMinDmg", 10.f);
     g_reactionDuration = Config::GetFloat("reactionDuration", 0.40f);
     g_reactionDotMin  = Config::GetFloat("reactionDotMin",  0.85f);
-    g_triggerKey     = Config::GetInt("triggerKey",     18);
+    g_triggerKey.Load("triggerKey");
     g_autoMelee      = Config::GetBool("autoMelee",     true);
     g_meleeRange     = Config::GetFloat("meleeRange",   3.f);
     g_meleeHoldSet   = Config::GetFloat("meleeHold",    0.10f);
@@ -208,7 +208,7 @@ extern "C" void on_unload()
     Config::SetFloat("reactionMinDmg", g_reactionMinDmg);
     Config::SetFloat("reactionDuration", g_reactionDuration);
     Config::SetFloat("reactionDotMin",  g_reactionDotMin);
-    Config::SetInt("triggerKey",     g_triggerKey);
+    g_triggerKey.Save("triggerKey");
     Config::SetBool("autoMelee",     g_autoMelee);
     Config::SetFloat("meleeRange",   g_meleeRange);
     Config::SetFloat("meleeHold",    g_meleeHoldSet);
@@ -253,7 +253,9 @@ extern "C" void on_hero_changed(uint64_t) { g_cachedTarget = -1; AimResetSmoothi
 extern "C" void on_frame(float dt)
 {
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::Venture) return; }  // dormant on any other hero
+
+    g_triggerKey.Update();  // refresh hotkey state once per frame before any key is read
 
     // ── Skill1 (burrow) pulse manager ─────────────────────
     // Runs every frame so escape-burrow works even when trigger isn't held.
@@ -288,7 +290,7 @@ extern "C" void on_frame(float dt)
         }
     }
 
-    bool held = IsKeyDown(g_triggerKey);
+    bool held = g_triggerKey.IsDown();
 
     if (g_comboCooldown > 0.f) g_comboCooldown -= dt;
 
@@ -489,7 +491,7 @@ extern "C" void on_frame(float dt)
 extern "C" void on_render()
 {
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::Venture) return; }  // dormant on any other hero
 
     // Always-on skill state debug — confirms SDK signals reflect the game state.
     // Burrow Shift, fire LMB until empty (reload), etc. and watch S1 / Reload flip.
@@ -536,7 +538,7 @@ extern "C" void on_render()
         g_enemiesInUnburrowRange = 0;
     }
 
-    bool held = IsKeyDown(g_triggerKey);
+    bool held = g_triggerKey.IsDown();
     bool comboActive = (g_comboTimer >= 0.f);
 
     if (!held && !comboActive)
@@ -705,7 +707,7 @@ extern "C" void on_render()
 
     // Combo gate debug — read each condition; the one failing is your problem.
     {
-        bool h = IsKeyDown(g_triggerKey);
+        bool h = g_triggerKey.IsDown();
         bool t = g_targetValid && g_cachedTarget >= 0;
         bool b = IsSkill1Active();
         bool mck = t && (g_targetDist <= g_meleeRange) && (g_targetHp <= g_meleeKillHp);
@@ -753,7 +755,7 @@ extern "C" void on_menu()
     if (!g_enabled) return;
     ImGui::Separator();
 
-    ImGui::SliderInt("Trigger Key (VK)", &g_triggerKey, 0, 255);
+    g_triggerKey.Render("Trigger Key");
     ImGui::SliderFloat("Smoothing",      &g_stiffness, 0.f, 5000.f);
     ImGui::SliderFloat("FOV Radius",     &g_fovRadius, 10.f, 500.f);
     ImGui::Checkbox("FOV at Target (not crosshair)", &g_fovAtTarget);
@@ -797,7 +799,7 @@ extern "C" void on_menu()
     if (g_autoUnburrow)
     {
         ImGui::SliderFloat("Unburrow Range (m)",        &g_unburrowRange,  1.f, 10.f);
-        ImGui::SliderFloat("Unburrow Charge Hold (s)",  &g_unburrowCharge, 0.1f, 1.5f);
+        ImGui::SliderFloat("Unburrow Charge Hold (s)",  &g_unburrowCharge, 0.1f, 4.0f);
         ImGui::SliderInt("Min Enemies in Range",        &g_unburrowMinEnemies, 1, 5);
         ImGui::SliderInt("Max Enemies in Range",        &g_unburrowMaxEnemies, 1, 5);
         ImGui::SliderFloat("Burrow Grace Period (s)",   &g_unburrowGraceTime, 0.f, 5.f);
@@ -817,7 +819,7 @@ extern "C" void on_menu()
     ImGui::Checkbox("Lock to current hero", &g_heroLock);
     if (g_heroLock != prevLock)
     {
-        if (g_heroLock) g_heroId = GetCurrentHero();
+        if (g_heroLock) g_heroId = LocalPlayer().GetHeroId();
         else            g_heroId = 0;
     }
 }

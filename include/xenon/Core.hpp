@@ -529,6 +529,7 @@ namespace xenon
         constexpr uint16_t IllariCharge   = 0x0651;  // Illari solar rifle charge
         constexpr uint16_t HanzoCharge    = 0x00C9;  // Hanzo bow draw charge
         constexpr uint16_t SombraAmmo     = 0x0C41;  // Sombra ammo count
+        constexpr uint16_t VendettaPEAmmo = 0x0000;  // TODO: Vendetta Projected Edge charges — ID unknown, find via debug panel
     }
 
     // Hero state bitmask flags

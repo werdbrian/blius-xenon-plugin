@@ -36,7 +36,7 @@ static float g_breatherHpPct   = 90.f;
 
 // Auto shoot
 static bool  g_autoShoot       = true;
-static int   g_shootKey        = 18;   // VK_MENU = Left Alt
+static Hotkey g_shootKey(18);  // click-to-bind in menu (VK_MENU = Left Alt)
 static float g_shootFovDeg     = 90.f;
 static bool  g_showShootFov    = true;
 static Color g_shootFovColor   = Color(100, 220, 100, 60);
@@ -241,7 +241,7 @@ extern "C" void on_load()
     g_autoBreather     = Config::GetBool("autoBreather",    true);
     g_breatherHpPct    = Config::GetFloat("breatherHpPct",  90.f);
     g_autoShoot        = Config::GetBool("autoShoot",       true);
-    g_shootKey         = Config::GetInt("shootKey",         18);
+    g_shootKey.Load("shootKey");
     g_shootFovDeg      = Config::GetFloat("shootFovDeg",    90.f);
     g_showShootFov     = Config::GetBool("showShootFov",    true);
     g_shootSmoothing   = Config::GetFloat("shootSmoothing", 30.f);
@@ -276,7 +276,7 @@ extern "C" void on_unload()
     Config::SetBool("autoBreather",    g_autoBreather);
     Config::SetFloat("breatherHpPct",  g_breatherHpPct);
     Config::SetBool("autoShoot",       g_autoShoot);
-    Config::SetInt("shootKey",         g_shootKey);
+    g_shootKey.Save("shootKey");
     Config::SetFloat("shootFovDeg",    g_shootFovDeg);
     Config::SetBool("showShootFov",    g_showShootFov);
     Config::SetFloat("shootSmoothing", g_shootSmoothing);
@@ -325,7 +325,7 @@ extern "C" void on_menu()
     ImGui::Checkbox("Auto Shoot (hold key)", &g_autoShoot);
     if (g_autoShoot)
     {
-        ImGui::SliderInt("Shoot Key (VK)",    &g_shootKey,        0,    255);
+        g_shootKey.Render("Shoot Key");
         ImGui::SliderFloat("Shoot FOV (deg)", &g_shootFovDeg,     0.f,  360.f);
         ImGui::Checkbox("Show Shoot FOV",     &g_showShootFov);
         ImGui::SliderFloat("Shoot Smoothing", &g_shootSmoothing,  0.f,  1500.f);
@@ -375,6 +375,8 @@ extern "C" void on_frame(float)
         g_targetDist = xn_get_distance_to_entity(g_targetIdx);
 
     if (!g_enabled || !IsIngame()) return;
+
+    g_shootKey.Update();
 
     float now = GetTime();
 
@@ -560,7 +562,7 @@ extern "C" void on_render()
     // Auto shoot — target selection and aim (runs every frame key is held)
     if (g_autoShoot)
     {
-        bool held = IsKeyDown(g_shootKey);
+        bool held = g_shootKey.IsDown();
         if (!held)
         {
             g_shootTargetIdx   = -1;

@@ -18,11 +18,12 @@ static float g_shoutHpThreshold = 50.f;  // % HP
 
 // Auto shoot
 static bool  g_autoShoot        = true;
-static int   g_shootKey         = 18;    // VK 18 = Left Alt
+static Hotkey g_shootKey(18);            // click-to-bind; default VK 18 = Left Alt
+static float g_shootMaxRange    = 30.f;  // max distance to fire (m)
 
 // Auto blade (RMouse)
 static bool  g_autoBlade        = true;
-static int   g_bladeKey         = 18;    // VK 18 = Left Alt
+static Hotkey g_bladeKey(18);            // click-to-bind; default VK 18 = Left Alt
 static float g_bladeHpThreshold = 100.f; // fire if enemy HP <= this
 static float g_bladeRange       = 20.f;  // max distance (m)
 static float g_bladeArcFactor   = 0.1f;   // height offset: dist * factor (linear)
@@ -107,9 +108,10 @@ extern "C" void on_load()
     g_autoShout        = Config::GetBool("autoShout",        true);
     g_shoutHpThreshold = Config::GetFloat("shoutHpThresh",   50.f);
     g_autoShoot        = Config::GetBool("autoShoot",        true);
-    g_shootKey         = Config::GetInt("shootKey",          18);
+    g_shootKey.Load("shootKey");
+    g_shootMaxRange    = Config::GetFloat("shootMaxRange",   30.f);
     g_autoBlade        = Config::GetBool("autoBlade",        true);
-    g_bladeKey         = Config::GetInt("bladeKey",          18);
+    g_bladeKey.Load("bladeKey");
     g_bladeHpThreshold = Config::GetFloat("bladeHpThresh",   100.f);
     g_bladeRange       = Config::GetFloat("bladeRange",      20.f);
     g_bladeArcFactor   = Config::GetFloat("bladeArcFactor",  0.1f);
@@ -141,9 +143,10 @@ extern "C" void on_unload()
     Config::SetBool("autoShout",      g_autoShout);
     Config::SetFloat("shoutHpThresh", g_shoutHpThreshold);
     Config::SetBool("autoShoot",      g_autoShoot);
-    Config::SetInt("shootKey",        g_shootKey);
+    g_shootKey.Save("shootKey");
+    Config::SetFloat("shootMaxRange", g_shootMaxRange);
     Config::SetBool("autoBlade",      g_autoBlade);
-    Config::SetInt("bladeKey",        g_bladeKey);
+    g_bladeKey.Save("bladeKey");
     Config::SetFloat("bladeHpThresh", g_bladeHpThreshold);
     Config::SetFloat("bladeRange",    g_bladeRange);
     Config::SetFloat("bladeArcFactor",  g_bladeArcFactor);
@@ -171,13 +174,17 @@ extern "C" void on_hero_changed(uint64_t) { g_cachedTarget = -1; AimResetSmoothi
 extern "C" void on_frame(float dt)
 {
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::JunkerQueen) return; }  // dormant on any other hero
+
+    // Update hotkeys once per frame before any key is read (on_frame runs before on_render)
+    g_shootKey.Update();
+    g_bladeKey.Update();
 
     Entity local = LocalPlayer();
     if (!local.IsValid()) return;
 
-    bool shootHeld = IsKeyDown(g_shootKey);
-    bool bladeHeld = IsKeyDown(g_bladeKey);
+    bool shootHeld = g_shootKey.IsDown();
+    bool bladeHeld = g_bladeKey.IsDown();
 
     // Auto shout — passive, no key required
     if (g_autoShout)
@@ -218,13 +225,20 @@ extern "C" void on_frame(float dt)
 
     if (g_bladeCombo && bladeConditions)
     {
-        // Aim with arc + projectile prediction
-        float   ttt    = (g_bladeProjectileSpeed > 0.f) ? g_targetDist / g_bladeProjectileSpeed : 0.f;
-        Vector3 arcPos = g_targetHeadPos;
-        arcPos.x += g_targetVelocity.x * ttt;
-        arcPos.y += g_targetVelocity.y * ttt + g_targetDist * g_bladeArcFactor;
-        arcPos.z += g_targetVelocity.z * ttt;
-        AimAtPosition(arcPos, g_bladeStiffness);
+        // Arc aim only while blade is in flight; otherwise aim at bone normally
+        if (g_bladePhase == BP_THROWN)
+        {
+            float   ttt    = (g_bladeProjectileSpeed > 0.f) ? g_targetDist / g_bladeProjectileSpeed : 0.f;
+            Vector3 arcPos = g_targetHeadPos;
+            arcPos.x += g_targetVelocity.x * ttt;
+            arcPos.y += g_targetVelocity.y * ttt + g_targetDist * g_bladeArcFactor;
+            arcPos.z += g_targetVelocity.z * ttt;
+            AimAtPosition(arcPos, g_bladeStiffness);
+        }
+        else
+        {
+            AimAtBone(g_cachedTarget, g_bestBone, g_stiffness);
+        }
 
         g_bladePhaseT += dt;
         switch (g_bladePhase)
@@ -279,7 +293,7 @@ extern "C" void on_frame(float dt)
     }
     else if (bladeConditions)
     {
-        // Simple hold: same arc + prediction
+        // Simple hold: arc aim on throw, bone aim otherwise
         float   ttt    = (g_bladeProjectileSpeed > 0.f) ? g_targetDist / g_bladeProjectileSpeed : 0.f;
         Vector3 arcPos = g_targetHeadPos;
         arcPos.x += g_targetVelocity.x * ttt;
@@ -295,11 +309,11 @@ extern "C" void on_frame(float dt)
             AimAtBone(g_cachedTarget, g_bestBone, g_stiffness);
     }
 
-    // Auto shoot — suppressed when blade is ready to throw (blade takes priority)
-    bool bladeReady = bladeConditions && g_bladePhase == BP_IDLE;
+    // Auto shoot — suppressed only while blade combo is actively running
+    bool bladeRunning = (g_bladePhase != BP_IDLE);
     if (g_autoShoot && shootHeld)
     {
-        if (g_cachedHitbox >= 0 && g_meleeHold <= 0.f && !bladeReady)
+        if (g_targetValid && g_targetDist <= g_shootMaxRange && g_meleeHold <= 0.f && !bladeRunning)
             PressGameButton(GameButton::LMouse);
         else
             ReleaseGameButton(GameButton::LMouse);
@@ -324,10 +338,10 @@ extern "C" void on_frame(float dt)
 extern "C" void on_render()
 {
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::JunkerQueen) return; }  // dormant on any other hero
 
-    bool shootHeld = IsKeyDown(g_shootKey);
-    bool bladeHeld = IsKeyDown(g_bladeKey);
+    bool shootHeld = g_shootKey.IsDown();
+    bool bladeHeld = g_bladeKey.IsDown();
 
     if (!shootHeld && !bladeHeld)
     {
@@ -354,7 +368,7 @@ extern "C" void on_render()
 
     for (Entity p : Players())
     {
-        if (!p.IsAlive() || p.IsLocal() || !p.IsVisible()) continue;
+        if (!p.IsAlive() || p.IsLocal() || !p.IsEnemy() || !p.IsVisible()) continue;
 
         Vector3 headWorld = p.GetBonePos(Bone::Head);
         if (!headWorld.IsValid()) continue;
@@ -496,7 +510,8 @@ extern "C" void on_menu()
     ImGui::Checkbox("Auto Shoot", &g_autoShoot);
     if (g_autoShoot)
     {
-        ImGui::SliderInt("Shoot Key (VK)", &g_shootKey, 0, 255);
+        g_shootKey.Render("Shoot Key");
+        ImGui::SliderFloat("Max Range (m)", &g_shootMaxRange, 1.f, 80.f);
         ImGui::SliderFloat("Smoothing", &g_stiffness, 0.f, 1500.f);
         ImGui::SliderFloat("FOV Radius", &g_fovRadius, 10.f, 500.f);
         ImGui::SliderFloat("Hitbox Scale", &g_hitboxScale, 0.5f, 2.f);
@@ -506,7 +521,7 @@ extern "C" void on_menu()
     ImGui::Checkbox("Auto Blade", &g_autoBlade);
     if (g_autoBlade)
     {
-        ImGui::SliderInt("Blade Key (VK)", &g_bladeKey, 0, 255);
+        g_bladeKey.Render("Blade Key");
         ImGui::SliderFloat("Blade HP Threshold", &g_bladeHpThreshold, 1.f, 500.f);
         ImGui::SliderFloat("Blade Range (m)", &g_bladeRange, 1.f, 40.f);
         ImGui::SliderFloat("Blade Arc Factor",        &g_bladeArcFactor,          0.f,  0.5f);
@@ -538,7 +553,7 @@ extern "C" void on_menu()
     ImGui::Checkbox("Lock to current hero", &g_heroLock);
     if (g_heroLock != prevLock)
     {
-        if (g_heroLock) g_heroId = GetCurrentHero();
+        if (g_heroLock) g_heroId = LocalPlayer().GetHeroId();
         else            g_heroId = 0;
     }
 }

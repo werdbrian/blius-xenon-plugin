@@ -16,7 +16,7 @@ static bool     g_enabled         = true;
 static bool     g_autoMelee       = true;
 static float    g_meleeRange      = 6.f;
 static bool     g_autoWhip        = true;
-static float    g_whipMinDist     = 7.f;
+static float    g_whipMinDist     = 0.f;
 static float    g_whipMaxDist     = 20.f;
 static float    g_whipKillHp      = 500.f;  // effectively always fire by default
 static float    g_targetMaxRange  = 25.f;   // ignore enemies beyond this distance (m)
@@ -157,6 +157,15 @@ static bool     g_dbgBashInRange   = false; // target valid+visible & within bas
 static bool     g_dbgBashLowHp     = false; // target HP <= bashKillHp
 static bool     g_dbgBashGroupOk   = false; // nearbyEnemyCount < bashGroupMin
 static bool     g_dbgBashWant      = false; // all standalone-bash conditions met
+
+static int      g_nearbyEnemyCount = 0;     // enemies near the target (live, for overlay)
+
+// Whip gate debug — shows which whip condition is blocking
+static bool     g_dbgWhipReady     = false; // Skill1 off cooldown
+static bool     g_dbgWhipInRange   = false; // within whipMin..whipMax & visible
+static bool     g_dbgWhipHpOk      = false; // target HP <= whipKillHp
+static bool     g_dbgWhipClear     = false; // no barrier & not shielded
+static bool     g_dbgWhipWant      = false; // all whip conditions met (off cd)
 
 // Aim bones
 static const int kAimBones[]      = {
@@ -446,6 +455,7 @@ extern "C" void on_frame(float dt)
                 nearbyEnemyCount++;
         }
     }
+    g_nearbyEnemyCount = nearbyEnemyCount;   // expose for the always-on overlay
 
     // -------------------------------------------------------
     // Auto Repair Pack (Skill2) — fires regardless of combat state
@@ -464,7 +474,7 @@ extern "C" void on_frame(float dt)
     {
         if (local.IsValid())
         {
-            g_dbgS1OnCd = local.GetSkill1Cooldown().IsOnCooldown();
+            g_dbgS1OnCd = local.GetSkill2Cooldown().IsOnCooldown();  // whip lives in slot 2
             g_dbgS2OnCd = local.GetSkill2Cooldown().IsOnCooldown();
         }
         g_repairHoldEnd = now + kRepairHold;
@@ -565,7 +575,7 @@ extern "C" void on_frame(float dt)
                 ReleaseGameButton(GameButton::Melee);
                 ReleaseGameButton(GameButton::Crouch);
                 {
-                    SkillCooldown s1 = local.IsValid() ? local.GetSkill1Cooldown() : SkillCooldown{};
+                    SkillCooldown s1 = local.IsValid() ? local.GetSkill2Cooldown() : SkillCooldown{};  // whip = slot 2
                     bool canFire = g_targetVisible && !s1.IsOnCooldown();
                     if (canFire)
                         PressGameButton(GameButton::Skill1);
@@ -636,31 +646,54 @@ extern "C" void on_frame(float dt)
     // land one flail swing FIRST, then let the ability cancel its recovery. The actual
     // LMouse swing is driven by the normal melee branch below — here we just hold the
     // ability back until the swing has had g_meleeCancelTime to connect.
-    bool meleeReady = g_autoMelee && inMelee && g_targetValid
-                      && !g_targetShielded && g_targetBarrier <= 0.f;
-    // Raw "ability wants to start this frame" (whip's range normally doesn't overlap
-    // melee range, so in practice this gates the bash — but it covers whip too if the
-    // whip min distance is lowered below melee range).
-    bool whipWantsRaw = g_autoWhip && g_targetValid && g_targetVisible
-                        && g_targetDist >= g_whipMinDist && g_targetDist <= g_whipMaxDist
-                        && g_targetHp > 0.f && g_targetHp <= g_whipKillHp
-                        && g_targetBarrier <= 0.f && !g_targetShielded;
+    // Can a flail swing actually land right now? Barrier is a reliable value; the shield
+    // raycast (g_targetShielded) FLICKERS, so we deliberately do NOT let it suppress the
+    // pre-swing — otherwise the bash sometimes fires first on a false "shielded" frame.
+    bool canSwing = g_autoMelee && inMelee && g_targetValid && g_targetBarrier <= 0.f;
+    // Raw "whip wants to fire this frame". Must include the Skill1 cooldown — otherwise
+    // abilityImminent stays true while the whip recharges and the pre-melee keeps
+    // re-engaging (the "melee twice then whip" bug). (Whip's range normally doesn't
+    // overlap melee range, so this gates the bash in practice — but it covers whip too
+    // if Whip Min Dist is lowered below melee range.)
+    bool whipOffCd     = !(local.IsValid() && local.GetSkill2Cooldown().IsOnCooldown());  // whip = slot 2
+    bool whipInRange   = g_targetVisible && g_targetDist >= g_whipMinDist && g_targetDist <= g_whipMaxDist;
+    bool whipHpOk      = g_targetHp > 0.f && g_targetHp <= g_whipKillHp;
+    bool whipClear     = g_targetBarrier <= 0.f && !g_targetShielded;
+    bool whipWantsRaw  = g_autoWhip && g_targetValid && whipOffCd && whipInRange && whipHpOk && whipClear;
+
+    g_dbgWhipReady   = whipOffCd;
+    g_dbgWhipInRange = whipInRange;
+    g_dbgWhipHpOk    = whipHpOk;
+    g_dbgWhipClear   = whipClear;
+    g_dbgWhipWant    = whipWantsRaw;
+
     bool abilityImminent = ((wantBash && bashReady) || whipWantsRaw)
                            && g_bashPhase == BA_IDLE && g_whipHoldEnd <= 0.f
                            && g_postBashHoldEnd <= 0.f;
 
     bool preMeleeActive = false;
-    if (g_meleeCancel && meleeReady && abilityImminent && !g_meleeCancelDone)
+    if (g_meleeCancel && inMelee && abilityImminent && !g_meleeCancelDone)
     {
-        if (g_meleeCancelEnd <= 0.f) g_meleeCancelEnd = now + g_meleeCancelTime;  // begin swing
-        if (now < g_meleeCancelEnd)  preMeleeActive = true;                        // swinging — hold ability
-        else { g_meleeCancelEnd = 0.f; g_meleeCancelDone = true; }                 // swing landed — release ability
+        if (canSwing)
+        {
+            if (g_meleeCancelEnd <= 0.f) g_meleeCancelEnd = now + g_meleeCancelTime; // begin swing
+            if (now < g_meleeCancelEnd)  preMeleeActive = true;                       // swinging — hold ability
+            else { g_meleeCancelEnd = 0.f; g_meleeCancelDone = true; }                // swing landed — release
+        }
+        else
+        {
+            // in range but can't swing (barrier up / auto-melee off): don't block the ability
+            g_meleeCancelEnd = 0.f; g_meleeCancelDone = true;
+        }
     }
     // Once the ability is no longer imminent (it fired, or target left), re-arm for next time.
     if (!abilityImminent) { g_meleeCancelEnd = 0.f; g_meleeCancelDone = false; }
     g_dbgPreMelee = preMeleeActive;
 
-    if (wantBash && g_bashPhase == BA_IDLE && bashReady && !preMeleeActive)
+    // Hard gate: in melee range with melee-cancel on, the bash may ONLY fire once the
+    // melee-first swing is satisfied (g_meleeCancelDone) — never before it.
+    bool meleeFirstOk = !g_meleeCancel || !inMelee || g_meleeCancelDone;
+    if (wantBash && g_bashPhase == BA_IDLE && bashReady && !preMeleeActive && meleeFirstOk)
     {
         g_bashPhase    = BA_RAISING;
         g_bashPhaseT   = 0.f;
@@ -717,7 +750,10 @@ extern "C" void on_frame(float dt)
     // -------------------------------------------------------
     bool whipReady    = false;
     bool whipPreAiming = false;
-    bool whipConditions = !bashActive && !comboWaiting && !preMeleeActive && keyDown && g_autoWhip && g_targetValid && g_targetVisible
+    // meleeFirstOk: in melee range with melee-cancel on, the whip may only fire once the
+    // melee-first swing is done — same hard gate as the bash, so it can't jump the queue.
+    bool whipConditions = !bashActive && !comboWaiting && !preMeleeActive && meleeFirstOk
+        && keyDown && g_autoWhip && g_targetValid && g_targetVisible
         && g_targetDist >= g_whipMinDist && g_targetDist <= g_whipMaxDist
         && g_targetHp > 0.f && g_targetHp <= g_whipKillHp
         && g_targetBarrier <= 0.f && !g_targetShielded;
@@ -726,7 +762,7 @@ extern "C" void on_frame(float dt)
     {
         if (g_whipPreAimEnd <= 0.f)
         {
-            SkillCooldown s1 = local.IsValid() ? local.GetSkill1Cooldown() : SkillCooldown{};
+            SkillCooldown s1 = local.IsValid() ? local.GetSkill2Cooldown() : SkillCooldown{};  // whip = slot 2
             if (!s1.IsOnCooldown())
             {
                 g_whipPreAimEnd = now + kWhipPreAim;
@@ -826,7 +862,7 @@ extern "C" void on_frame(float dt)
     }
     else if (g_postBashHoldEnd > 0.f) { /* post-bash throw owns LMouse */ }
     else if (!repairFiring && g_autoMelee && inMelee && g_targetValid && !whipReady && !blockActive
-             && g_targetBarrier <= 0.f && !g_targetShielded)
+             && g_targetBarrier <= 0.f)   // note: no shield-raycast gate (it flickers); barrier only
     {
         AimAtBone(g_cachedTarget, g_bestBone, g_meleeStiffness);
         PressGameButton(GameButton::LMouse);
@@ -852,27 +888,70 @@ extern "C" void on_render()
     if (g_drawFov)
         Draw::Circle(center, g_fovRadius, Color(255, 255, 255, 60), 1.f);
 
-    // Live bash-gate readout on the overlay — any 'n' is the blocker
+    // Live gate readout on the overlay — computed HERE (not from on_frame's frozen
+    // g_dbg* values) so it updates every frame even when the trigger isn't held.
     if (g_showDebug)
     {
+        float  nowD  = GetTime();
+        Entity lpD   = LocalPlayer();
+        bool   s1cd  = lpD.IsValid() && lpD.GetSkill2Cooldown().IsOnCooldown();  // whip = slot 2
+
+        bool dBashReady   = nowD >= g_bashCdEnd;
+        bool dBashInRange = g_targetValid && g_targetVisible && g_targetDist <= g_bashRange;
+        bool dBashLowHp   = g_targetHp > 0.f && g_targetHp <= g_bashKillHp;
+        bool dBashGroupOk = g_nearbyEnemyCount < g_bashGroupMin;
+        bool dBashWant    = g_autoBash && dBashInRange && dBashLowHp && dBashGroupOk;
+
+        bool dWhipReady   = !s1cd;
+        bool dWhipInRange = g_targetVisible && g_targetDist >= g_whipMinDist && g_targetDist <= g_whipMaxDist;
+        bool dWhipHpOk    = g_targetHp > 0.f && g_targetHp <= g_whipKillHp;
+        bool dWhipClear   = g_targetBarrier <= 0.f && !g_targetShielded;
+        bool dWhipWant    = g_autoWhip && g_targetValid && dWhipReady && dWhipInRange && dWhipHpOk && dWhipClear;
+
         float bx = 12.f, by = 120.f;
         TextBuilder<128> bt;
-        bt.put("BASH ").put(g_dbgBashWant ? "WANT" : "----")
-          .put("  rdy:").put(g_dbgBashReady ? "Y" : "n")
-          .put(" rng:").put(g_dbgBashInRange ? "Y" : "n")
-          .put(" hp:").put(g_dbgBashLowHp ? "Y" : "n")
-          .put(" grp:").put(g_dbgBashGroupOk ? "Y" : "n");
-        Draw::TextShadow(bx, by, g_dbgBashWant ? Color::Green() : Color(255,180,0,255), bt.c_str());
+        bt.put("BASH ").put(dBashWant ? "WANT" : "----")
+          .put("  rdy:").put(dBashReady ? "Y" : "n")
+          .put(" rng:").put(dBashInRange ? "Y" : "n")
+          .put(" hp:").put(dBashLowHp ? "Y" : "n")
+          .put(" grp:").put(dBashGroupOk ? "Y" : "n");
+        Draw::TextShadow(bx, by, dBashWant ? Color::Green() : Color(255,180,0,255), bt.c_str());
         by += 18.f;
-        TextBuilder<128> bt2;
+        TextBuilder<192> bt2;
         bt2.put("auto:").put(g_autoBash ? "Y" : "n")
-           .put(" trig:").put(g_dbgTriggerHeld ? "Y" : "n")
+           .put(" trig:").put(g_triggerKey.IsDown() ? "Y" : "n")
            .put(" dist:").putFloat(g_targetDist, 1)
            .put("/").putFloat(g_bashRange, 1)
            .put(" hp:").putFloat(g_targetHp, 0)
            .put("/").putFloat(g_bashKillHp, 0)
-           .put("  preMelee:").put(g_dbgPreMelee ? "SWING" : (g_meleeCancelDone ? "done" : "-"));
+           .put("  preMelee:").put(g_dbgPreMelee ? "SWING" : (g_meleeCancelDone ? "done" : "-"))
+           .put(" shld:").put(g_targetShielded ? "Y" : "n")
+           .put(" bar:").putFloat(g_targetBarrier, 0);
         Draw::TextShadow(bx, by, Color::White(), bt2.c_str());
+
+        // Live whip-gate readout — any 'n' is the blocker
+        by += 18.f;
+        TextBuilder<160> wt;
+        wt.put("WHIP ").put(dWhipWant ? "WANT" : "----")
+          .put("  rdy:").put(dWhipReady ? "Y" : "n")
+          .put(" rng:").put(dWhipInRange ? "Y" : "n")
+          .put(" hp:").put(dWhipHpOk ? "Y" : "n")
+          .put(" clr:").put(dWhipClear ? "Y" : "n")
+          .put("  dist:").putFloat(g_targetDist, 1)
+          .put(" (").putFloat(g_whipMinDist, 0).put("-").putFloat(g_whipMaxDist, 0).put(")");
+        Draw::TextShadow(bx, by, dWhipWant ? Color::Green() : Color(255,180,0,255), wt.c_str());
+
+        // Skill-slot diagnostic — fire your whip and watch which slot's cooldown ticks.
+        // That tells us which GetSkillNCooldown() the whip really lives in. cur/max en=ticking
+        by += 18.f;
+        SkillCooldown sc1 = lpD.IsValid() ? lpD.GetSkill1Cooldown() : SkillCooldown{};
+        SkillCooldown sc2 = lpD.IsValid() ? lpD.GetSkill2Cooldown() : SkillCooldown{};
+        SkillCooldown sc3 = lpD.IsValid() ? lpD.GetSkill3Cooldown() : SkillCooldown{};
+        TextBuilder<192> sk;
+        sk.put("S1 ").putFloat(sc1.current,1).put("/").putFloat(sc1.max,1).put(" en:").put(sc1.enabled?"Y":"n")
+          .put("  S2 ").putFloat(sc2.current,1).put("/").putFloat(sc2.max,1).put(" en:").put(sc2.enabled?"Y":"n")
+          .put("  S3 ").putFloat(sc3.current,1).put("/").putFloat(sc3.max,1).put(" en:").put(sc3.enabled?"Y":"n");
+        Draw::TextShadow(bx, by, Color::Cyan(), sk.c_str());
 
         // Repair-pack scan readout (counts are from last frame's ally scan)
         by += 18.f;
@@ -960,9 +1039,9 @@ extern "C" void on_render()
     };
 
     {
-        // ── Enemy scan (trigger held, duel engaged, reaction active, or enemy in melee range) ──
+        // ── Enemy scan — runs EVERY frame so target/debug values stay live even when the
+        // trigger isn't held. (Firing still only happens in on_frame while the trigger is held.)
         bool reactionActive = g_reactionTimer > 0.f;
-        if (triggerHeld || duelEngaged || reactionActive || g_combo != CB_IDLE)
         {
             int32_t bestIdx   = -1;
             float   bestScore = 99999.f;
@@ -1062,13 +1141,6 @@ extern "C" void on_render()
                 g_targetBodyPos = {}; g_targetPos = {}; g_targetVisible = false; g_targetBarrier = 0.f; g_targetShielded = false;
             }
         }
-        else
-        {
-            // Idle: clear enemy targets
-            g_targetValid = false; g_cachedTarget = -1; g_cachedHitbox = -1;
-            g_targetDist = 99999.f; g_targetVelocity = {}; g_prevHeadTime = 0.f;
-            g_targetBodyPos = {}; g_targetVisible = false; g_targetBarrier = 0.f;
-        }
 
         doAllyScan();
     }
@@ -1131,7 +1203,7 @@ extern "C" void on_menu()
         ImGui::SliderFloat("Melee Range (m)",     &g_meleeRange,       2.f,   10.f);
         ImGui::SliderFloat("Melee FOV Radius",    &g_meleeFovRadius,   50.f,  600.f);
         ImGui::SliderFloat("Melee Hitbox Scale",  &g_meleeHitboxScale, 0.5f,  3.f);
-        ImGui::SliderFloat("Whip Min Dist",    &g_whipMinDist,    2.f,   15.f);
+        ImGui::SliderFloat("Whip Min Dist",    &g_whipMinDist,    0.f,   15.f);
         ImGui::SliderFloat("Whip Max Dist",    &g_whipMaxDist,    5.f,   30.f);
         ImGui::SliderFloat("Whip Kill HP",     &g_whipKillHp,     0.f,   600.f);
         ImGui::SliderFloat("Whip FOV Radius",   &g_whipFovRadius,   50.f,  500.f);

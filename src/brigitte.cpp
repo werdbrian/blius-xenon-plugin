@@ -878,6 +878,7 @@ extern "C" void on_render()
             float threshold = (p.GetHealthMax() >= g_tankHpThreshold) ? g_repairHpPctTank : g_repairHpPctDps;
             if (p.IsFullHealth() || hpPct > threshold) { g_dbgRejHp++;    continue; }
             if (d > g_repairRange)                      { g_dbgRejRange++; continue; }
+            if (!p.IsVisible())                         { g_dbgRejLOS++;   continue; }  // don't heal allies through walls
             Vector3 allyHead = p.GetHeadPos();
             Vector2 allyScreen;
             bool inFov = allyHead.IsValid() && WorldToScreen(allyHead, allyScreen)

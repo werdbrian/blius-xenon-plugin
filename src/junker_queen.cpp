@@ -18,12 +18,12 @@ static float g_shoutHpThreshold = 50.f;  // % HP
 
 // Auto shoot
 static bool  g_autoShoot        = true;
-static int   g_shootKey         = 18;    // VK 18 = Left Alt
+static Hotkey g_shootKey(18);            // click-to-bind; default VK 18 = Left Alt
 static float g_shootMaxRange    = 30.f;  // max distance to fire (m)
 
 // Auto blade (RMouse)
 static bool  g_autoBlade        = true;
-static int   g_bladeKey         = 18;    // VK 18 = Left Alt
+static Hotkey g_bladeKey(18);            // click-to-bind; default VK 18 = Left Alt
 static float g_bladeHpThreshold = 100.f; // fire if enemy HP <= this
 static float g_bladeRange       = 20.f;  // max distance (m)
 static float g_bladeArcFactor   = 0.1f;   // height offset: dist * factor (linear)
@@ -108,10 +108,10 @@ extern "C" void on_load()
     g_autoShout        = Config::GetBool("autoShout",        true);
     g_shoutHpThreshold = Config::GetFloat("shoutHpThresh",   50.f);
     g_autoShoot        = Config::GetBool("autoShoot",        true);
-    g_shootKey         = Config::GetInt("shootKey",          18);
+    g_shootKey.Load("shootKey");
     g_shootMaxRange    = Config::GetFloat("shootMaxRange",   30.f);
     g_autoBlade        = Config::GetBool("autoBlade",        true);
-    g_bladeKey         = Config::GetInt("bladeKey",          18);
+    g_bladeKey.Load("bladeKey");
     g_bladeHpThreshold = Config::GetFloat("bladeHpThresh",   100.f);
     g_bladeRange       = Config::GetFloat("bladeRange",      20.f);
     g_bladeArcFactor   = Config::GetFloat("bladeArcFactor",  0.1f);
@@ -143,10 +143,10 @@ extern "C" void on_unload()
     Config::SetBool("autoShout",      g_autoShout);
     Config::SetFloat("shoutHpThresh", g_shoutHpThreshold);
     Config::SetBool("autoShoot",      g_autoShoot);
-    Config::SetInt("shootKey",        g_shootKey);
+    g_shootKey.Save("shootKey");
     Config::SetFloat("shootMaxRange", g_shootMaxRange);
     Config::SetBool("autoBlade",      g_autoBlade);
-    Config::SetInt("bladeKey",        g_bladeKey);
+    g_bladeKey.Save("bladeKey");
     Config::SetFloat("bladeHpThresh", g_bladeHpThreshold);
     Config::SetFloat("bladeRange",    g_bladeRange);
     Config::SetFloat("bladeArcFactor",  g_bladeArcFactor);
@@ -176,11 +176,15 @@ extern "C" void on_frame(float dt)
     if (!g_enabled || !IsIngame()) return;
     { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::JunkerQueen) return; }  // dormant on any other hero
 
+    // Update hotkeys once per frame before any key is read (on_frame runs before on_render)
+    g_shootKey.Update();
+    g_bladeKey.Update();
+
     Entity local = LocalPlayer();
     if (!local.IsValid()) return;
 
-    bool shootHeld = IsKeyDown(g_shootKey);
-    bool bladeHeld = IsKeyDown(g_bladeKey);
+    bool shootHeld = g_shootKey.IsDown();
+    bool bladeHeld = g_bladeKey.IsDown();
 
     // Auto shout — passive, no key required
     if (g_autoShout)
@@ -336,8 +340,8 @@ extern "C" void on_render()
     if (!g_enabled || !IsIngame()) return;
     { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::JunkerQueen) return; }  // dormant on any other hero
 
-    bool shootHeld = IsKeyDown(g_shootKey);
-    bool bladeHeld = IsKeyDown(g_bladeKey);
+    bool shootHeld = g_shootKey.IsDown();
+    bool bladeHeld = g_bladeKey.IsDown();
 
     if (!shootHeld && !bladeHeld)
     {
@@ -506,7 +510,7 @@ extern "C" void on_menu()
     ImGui::Checkbox("Auto Shoot", &g_autoShoot);
     if (g_autoShoot)
     {
-        ImGui::SliderInt("Shoot Key (VK)", &g_shootKey, 0, 255);
+        g_shootKey.Render("Shoot Key");
         ImGui::SliderFloat("Max Range (m)", &g_shootMaxRange, 1.f, 80.f);
         ImGui::SliderFloat("Smoothing", &g_stiffness, 0.f, 1500.f);
         ImGui::SliderFloat("FOV Radius", &g_fovRadius, 10.f, 500.f);
@@ -517,7 +521,7 @@ extern "C" void on_menu()
     ImGui::Checkbox("Auto Blade", &g_autoBlade);
     if (g_autoBlade)
     {
-        ImGui::SliderInt("Blade Key (VK)", &g_bladeKey, 0, 255);
+        g_bladeKey.Render("Blade Key");
         ImGui::SliderFloat("Blade HP Threshold", &g_bladeHpThreshold, 1.f, 500.f);
         ImGui::SliderFloat("Blade Range (m)", &g_bladeRange, 1.f, 40.f);
         ImGui::SliderFloat("Blade Arc Factor",        &g_bladeArcFactor,          0.f,  0.5f);

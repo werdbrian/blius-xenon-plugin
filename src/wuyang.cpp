@@ -8,7 +8,7 @@
 using namespace xenon;
 
 static bool  g_enabled     = true;
-static int   g_triggerKey  = 1;       // hold this key to activate
+static Hotkey g_triggerKey(1);  // default LMB; click-to-bind in menu
 static float g_fovRadius   = 150.f;   // target scan FOV radius (px)
 static float g_maxRange    = 40.f;    // max target distance (m)
 static float g_stiffness   = 150.f;   // aim smoothing when steering to target
@@ -83,7 +83,7 @@ static Vector3 g_testCamFwd     = {};
 extern "C" void on_load()
 {
     g_enabled    = Config::GetBool("enabled",    true);
-    g_triggerKey = Config::GetInt("triggerKey",  1);
+    g_triggerKey.Load("triggerKey");
     g_fovRadius  = Config::GetFloat("fovRadius", 150.f);
     g_maxRange   = Config::GetFloat("maxRange",  40.f);
     g_stiffness  = Config::GetFloat("stiffness", 150.f);
@@ -93,7 +93,7 @@ extern "C" void on_load()
 extern "C" void on_unload()
 {
     Config::SetBool("enabled",    g_enabled);
-    Config::SetInt("triggerKey",  g_triggerKey);
+    g_triggerKey.Save("triggerKey");
     Config::SetFloat("fovRadius", g_fovRadius);
     Config::SetFloat("maxRange",  g_maxRange);
     Config::SetFloat("stiffness", g_stiffness);
@@ -118,7 +118,9 @@ extern "C" void on_frame(float /*dt*/)
     if (!g_enabled || !IsIngame()) return;
     { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::Wuyang) return; }  // dormant on any other hero
 
-    bool held = IsKeyDown(g_triggerKey);
+    g_triggerKey.Update();
+
+    bool held = g_triggerKey.IsDown();
     float now = GetTime();
 
     if (!held)
@@ -290,7 +292,7 @@ extern "C" void on_render()
 
         TextBuilder<64> l1;
         l1.put("WY lmb:").put(g_lmbHeld ? "HELD" : "off")
-          .put(" key:").put(IsKeyDown(g_triggerKey) ? "DOWN" : "up");
+          .put(" key:").put(g_triggerKey.IsDown() ? "DOWN" : "up");
         Draw::TextShadow(x, y, Color::White(), l1.c_str(), 16);
         y += lh;
 
@@ -371,7 +373,7 @@ extern "C" void on_menu()
         ImGui::Checkbox("Enabled",    &g_enabled);
         if (!g_enabled) return;
         ImGui::Checkbox("Draw Debug", &g_drawDebug);
-        ImGui::SliderInt("Trigger Key",       &g_triggerKey, 0,    31);
+        g_triggerKey.Render("Trigger Key");
         ImGui::SliderFloat("FOV Radius (px)", &g_fovRadius,  50.f, 400.f);
         ImGui::SliderFloat("Max Range (m)",   &g_maxRange,   5.f,  80.f);
         ImGui::SliderFloat("Aim Stiffness",   &g_stiffness,  10.f, 500.f);
@@ -393,8 +395,8 @@ extern "C" void on_menu()
         }
         {
             TextBuilder<80> db;
-            db.put("KeyState:").put(IsKeyDown(g_triggerKey) ? "DOWN" : "up")
-              .put(" Key#:").putInt(g_triggerKey)
+            db.put("KeyState:").put(g_triggerKey.IsDown() ? "DOWN" : "up")
+              .put(" Key#:").putInt(g_triggerKey.vk)
               .put(" InGame:").put(IsIngame() ? "Y" : "N")
               .put(" En:").put(g_enabled ? "Y" : "N");
             ImGui::Text(db.c_str());

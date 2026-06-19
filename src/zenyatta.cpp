@@ -6,7 +6,7 @@ using namespace xenon;
 
 // ── Config ────────────────────────────────────────────────
 static bool  g_enabled         = true;
-static int   g_triggerKey      = 18;     // VK 18 = Left Alt
+static Hotkey g_triggerKey(18);  // default Left Alt; click-to-bind in menu
 static float g_stiffness       = 30.f;
 static float g_fovRadius       = 200.f;
 static bool  g_drawFov         = true;
@@ -130,7 +130,7 @@ XENON_PLUGIN_INFO(
 extern "C" void on_load()
 {
     g_enabled          = Config::GetBool("enabled",          true);
-    g_triggerKey       = Config::GetInt("triggerKey",        18);
+    g_triggerKey.Load("triggerKey");
     g_stiffness        = Config::GetFloat("stiffness",       30.f);
     g_fovRadius        = Config::GetFloat("fovRadius",       200.f);
     g_drawFov          = Config::GetBool("drawFov",          true);
@@ -177,7 +177,7 @@ extern "C" void on_load()
 extern "C" void on_unload()
 {
     Config::SetBool("enabled",           g_enabled);
-    Config::SetInt("triggerKey",         g_triggerKey);
+    g_triggerKey.Save("triggerKey");
     Config::SetFloat("stiffness",        g_stiffness);
     Config::SetFloat("fovRadius",        g_fovRadius);
     Config::SetBool("drawFov",           g_drawFov);
@@ -246,8 +246,10 @@ extern "C" void on_frame(float dt)
     if (!g_enabled || !IsIngame()) return;
     { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::Zenyatta) return; }  // dormant on any other hero
 
+    g_triggerKey.Update();
+
     float now  = GetTime();
-    bool  held = IsKeyDown(g_triggerKey);
+    bool  held = g_triggerKey.IsDown();
 
     bool kickRunning = (g_kickT >= 0.f);
 
@@ -575,7 +577,7 @@ extern "C" void on_render()
             dy += lh;
         };
 
-        bool held_dbg       = IsKeyDown(g_triggerKey);
+        bool held_dbg       = g_triggerKey.IsDown();
         auto dbgSk2Cd       = LocalPlayer().GetSkill2Cooldown();
         bool dbgDiscordOnCd = dbgSk2Cd.enabled && dbgSk2Cd.current > 0.f;
         bool discordApplied = (g_discordOnTarget == g_cachedTarget) || dbgDiscordOnCd;
@@ -652,7 +654,7 @@ extern "C" void on_render()
         g_harmonyTargetPos = bestPos;
     }
 
-    bool held        = IsKeyDown(g_triggerKey);
+    bool held        = g_triggerKey.IsDown();
     bool volleyActive = (g_volleyHoldEnd > 0.f);
 
     if (!held && !volleyActive)
@@ -787,7 +789,7 @@ extern "C" void on_menu()
         if (!g_enabled) return;
         ImGui::Separator();
 
-        ImGui::SliderInt("Trigger Key (VK)", &g_triggerKey, 0, 255);
+        g_triggerKey.Render("Trigger Key");
         ImGui::SliderFloat("Smoothing",      &g_stiffness,  0.f, 5000.f);
         ImGui::SliderFloat("FOV Radius",     &g_fovRadius,  10.f, 500.f);
         ImGui::Checkbox("Draw FOV",          &g_drawFov);

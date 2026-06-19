@@ -8,7 +8,7 @@
 using namespace xenon;
 
 static bool    g_enabled      = true;
-static int     g_triggerKey   = 18;    // VK_MENU = Left Alt
+static Hotkey  g_triggerKey(18);  // default Left Alt; click-to-bind in menu
 static float   g_stiffness    = 30.f;
 static float   g_eArcComp     = 0.05f;  // height per meter inside max range (tunes sword arc landing)
 static float   g_fovRadius    = 200.f;
@@ -161,7 +161,7 @@ XENON_PLUGIN_INFO(
 extern "C" void on_load()
 {
     g_enabled       = Config::GetBool("enabled",        true);
-    g_triggerKey    = Config::GetInt("triggerKey",       18);
+    g_triggerKey.Load("triggerKey");
     g_stiffness     = Config::GetFloat("stiffness",      30.f);
     g_eArcComp      = Config::GetFloat("eArcComp",       0.05f);
     g_fovRadius     = Config::GetFloat("fovRadius",      200.f);
@@ -211,7 +211,7 @@ extern "C" void on_load()
 extern "C" void on_unload()
 {
     Config::SetBool("enabled",        g_enabled);
-    Config::SetInt("triggerKey",      g_triggerKey);
+    g_triggerKey.Save("triggerKey");
     Config::SetFloat("stiffness",     g_stiffness);
     Config::SetFloat("eArcComp",      g_eArcComp);
     Config::SetFloat("fovRadius",     g_fovRadius);
@@ -266,6 +266,8 @@ extern "C" void on_frame(float dt)
     if (!g_enabled || !IsIngame()) return;
     { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::Vendetta) return; }  // dormant on any other hero
 
+    g_triggerKey.Update();
+
     float  now   = GetTime();
     Entity local = LocalPlayer();
 
@@ -283,7 +285,7 @@ extern "C" void on_frame(float dt)
         g_prevHp = hp;
     }
 
-    bool held         = IsKeyDown(g_triggerKey);
+    bool held         = g_triggerKey.IsDown();
     bool overheadDone = (now - g_lastSliceAt) > kOverheadWindow;
 
     float timeSinceSlice = (g_lastSliceAt > 0.f) ? (now - g_lastSliceAt) : 99.f;
@@ -537,7 +539,7 @@ extern "C" void on_render()
     if (!g_enabled || !IsIngame()) return;
     { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::Vendetta) return; }  // dormant on any other hero
 
-    bool held = IsKeyDown(g_triggerKey);
+    bool held = g_triggerKey.IsDown();
 
     Vector2 sz = ScreenSize();
     if (sz.x <= 0 || sz.y <= 0) return;
@@ -958,7 +960,7 @@ extern "C" void on_menu()
         if (!g_enabled) return;
         ImGui::Separator();
 
-        ImGui::SliderInt("Trigger Key (VK)", &g_triggerKey, 0, 255);
+        g_triggerKey.Render("Trigger Key");
         ImGui::SliderFloat("Smoothing (0=snap)", &g_stiffness, 0.f, 1500.f);
         ImGui::SliderFloat("E Arc Comp (m/m)",   &g_eArcComp,  0.f,  0.5f);
         ImGui::SliderFloat("FOV Radius", &g_fovRadius, 10.f, 500.f);

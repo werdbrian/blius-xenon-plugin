@@ -45,12 +45,12 @@ NOTE: I DID NOT MAKE MOST OF THESE PLUGINS.  I GOT THEM FROM @C.
 - **Targeting / overlay** — target modes (closest distance / lowest HP / closest to
   crosshair), FOV circle, and an optional on-screen debug overlay.
 
-### `mei` — Mei ✅
+### `mei` — Mei ✅ (only ice block % logic)
 - **Auto Ice Block** — pops Cryo-Freeze (Skill1) the instant your HP drops to/below a
   configurable percentage. Single HP-% slider.
 - **Debug overlay** — optional on-screen readout of HP, cooldown, and active state.
 
-### `venture` — Venture
+### `venture` — Venture✅ 
 - **Bone aim** — aim assist onto a selected bone while the trigger is held.
 - **Drill Dash combo** — a tap-trigger sequence (LMB → Drill Dash → LMB).
 - **Auto-melee** + **smart Burrow** usage.
@@ -73,20 +73,21 @@ NOTE: I DID NOT MAKE MOST OF THESE PLUGINS.  I GOT THEM FROM @C.
 - **Auto Carnage blade** when the key is held and conditions are met.
 - **Proximity auto-melee.**
 
-### `wuyang` — Wu Yang
+### `wuyang` — Wu Yang - untested
 - **Steerable projectile** — hold LMB to fire and steer the projectile toward your current
   aim; the plugin holds LMB and re-estimates the projectile's world position each frame to
   keep it tracking.
 
-### `hazard` — Hazard
+### `hazard` — Hazard - untested
 - **Auto Violent Leap + slash** — hold the trigger key; if a target is within slash range
   and Violent Leap is ready, it leaps (Shift) and then auto-executes the slash. Leap is a
   two-part move, so the plugin only auto-fires the second (slash) half — you initiate the
   leap.
 
-### `illari` — Illari
+### `illari` — Illari ✅ 
 - **Aim assist + auto primary fire** — hold the trigger key; auto-fires once the solar
   rifle charge is at/above a configurable threshold so shots aren't wasted under-charged.
+  -auto melee
 
 ### `zarya` — Zarya
 - **Primary beam aim assist.**
@@ -128,23 +129,23 @@ NOTE: I DID NOT MAKE MOST OF THESE PLUGINS.  I GOT THEM FROM @C.
 
 ## Utility / multi-hero
 
-### `auto_block` — Auto Block ✅
+### `auto_block` — Auto Block untestted
 - Reactively pops a defensive ability when an incoming CC/damage threat is detected
   (Mei freeze, Tracer pulse bomb, Reaper, Doomfist, Moira, Sigma, etc.). Hero-agnostic, so
   it runs on any hero with a relevant defensive ability.
 
-### `enemy_esp` — Visuals / ESP ✅
+### `enemy_esp` — Visuals / ESP untestted
 - Box / skeleton / health-bar / snapline ESP, with hero names, distance text, dynamic
   distance fading, visible-only filtering, and a max render distance.
 
-### `enemy_outlines` — Outlines ✅
+### `enemy_outlines` — Outlines untestted
 - Applies in-game outline/glow to players, with configurable colors.
 
-### `minimap` — Minimap ✅
+### `minimap` — Minimap untestted
 - 2D overhead wall map built from raycasts; settled geometry is cached per map ID and
   reloaded next session, so it isn't recast every frame.
 
-### `ability_tracker` — Ability Tracker ✅
+### `ability_tracker` — Ability Tracker untestted
 - Per-enemy ability/cooldown indicators, color-coded by state (ready / cooldown / active /
   ultimate) across a large hero table.
 

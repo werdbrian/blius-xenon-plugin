@@ -124,7 +124,7 @@ extern "C" void on_frame(float dt)
     (void)dt;
 
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    if (g_heroId != 0 && LocalPlayer().GetHeroId() != g_heroId) return;
 
     g_triggerKey.Update();
 
@@ -156,7 +156,7 @@ extern "C" void on_frame(float dt)
 extern "C" void on_render()
 {
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    if (g_heroId != 0 && LocalPlayer().GetHeroId() != g_heroId) return;
 
     Vector2 sz = ScreenSize();
     if (sz.x <= 0 || sz.y <= 0) return;
@@ -303,7 +303,7 @@ extern "C" void on_menu()
         ImGui::Checkbox("Lock to current hero", &g_heroLock);
         if (g_heroLock != prevLock)
         {
-            if (g_heroLock) g_heroId = GetCurrentHero();
+            if (g_heroLock) g_heroId = LocalPlayer().GetHeroId();
             else            g_heroId = 0;
         }
     }

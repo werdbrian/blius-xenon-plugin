@@ -12,6 +12,7 @@ static const int   RAYS_PER_FRAME = 8;
 static const int   MAX_ORIGINS    = 64;
 static const int   MAX_HITS       = 1024;
 static const float MAP_SIZE       = 220.f; // panel pixels
+static const float GRID_CELL      = 1.f;   // meters per dedup cell
 
 struct Hit2D { float x, z; };
 
@@ -30,6 +31,31 @@ static bool       g_loaded      = false;
 static bool       g_enabled     = true;
 static bool       g_showMap     = true;
 static float      g_mapScale    = 2.f;   // pixels per meter
+
+// Floor-divide a world coord into a grid cell index (correct for negatives).
+static int CellOf(float v)
+{
+    float q = v / GRID_CELL;
+    int   i = (int)q;            // truncates toward zero
+    if (q < 0.f && (float)i != q) i--; // round down for negative coords
+    return i;
+}
+
+// Record a wall hit, skipping any whose grid cell is already mapped.
+// Returns false on duplicate or when the hit buffer is full.
+static bool AddHit(float x, float z)
+{
+    int gx = CellOf(x);
+    int gz = CellOf(z);
+    for (int i = 0; i < g_hitCount; i++)
+    {
+        if (CellOf(g_hits[i].x) == gx && CellOf(g_hits[i].z) == gz)
+            return false; // cell already mapped
+    }
+    if (g_hitCount >= MAX_HITS) return false;
+    g_hits[g_hitCount++] = { x, z };
+    return true;
+}
 
 XENON_PLUGIN_INFO(
     "minimap",
@@ -56,7 +82,7 @@ static void LoadMapData()
         float x = Config::GetFloat(key.c_str(), 0.f);
         key.clear(); key.put("m").putInt((int32_t)g_mapId).put("_").putInt(i).put("z");
         float z = Config::GetFloat(key.c_str(), 0.f);
-        g_hits[g_hitCount++] = { x, z };
+        AddHit(x, z); // drop any stale duplicates from older saves
     }
 }
 
@@ -154,8 +180,8 @@ extern "C" void on_frame(float dt)
             o.settled[ai] = true;
             rays++;
 
-            if (r.IsHit() && g_hitCount < MAX_HITS)
-                g_hits[g_hitCount++] = { r.hitPos.x, r.hitPos.z };
+            if (r.IsHit())
+                AddHit(r.hitPos.x, r.hitPos.z);
         }
     }
 }

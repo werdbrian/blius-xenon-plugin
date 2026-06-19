@@ -143,7 +143,7 @@ static PrevState g_prev[32]{};
 
 static int LocalHeroIdx()
 {
-    uint64_t h = GetCurrentHero();
+    uint64_t h = LocalPlayer().GetHeroId();
     for (int i = 0; i < DH_COUNT; ++i)
         if (h == kDefHero[i].heroId) return i;
     return -1;

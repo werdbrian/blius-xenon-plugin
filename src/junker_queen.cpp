@@ -553,7 +553,7 @@ extern "C" void on_menu()
     ImGui::Checkbox("Lock to current hero", &g_heroLock);
     if (g_heroLock != prevLock)
     {
-        if (g_heroLock) g_heroId = GetCurrentHero();
+        if (g_heroLock) g_heroId = LocalPlayer().GetHeroId();
         else            g_heroId = 0;
     }
 }

@@ -161,7 +161,7 @@ extern "C" void on_hero_changed(uint64_t) { g_cachedTarget = -1; AimResetSmoothi
 extern "C" void on_frame(float dt)
 {
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    if (g_heroId != 0 && LocalPlayer().GetHeroId() != g_heroId) return;
 
     g_triggerKey.Update();
     g_orbKey.Update();
@@ -257,7 +257,7 @@ extern "C" void on_frame(float dt)
 extern "C" void on_render()
 {
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    if (g_heroId != 0 && LocalPlayer().GetHeroId() != g_heroId) return;
 
     bool held = g_triggerKey.IsDown() || (g_orbKey.vk != 0 && g_orbKey.IsDown());
 
@@ -561,7 +561,7 @@ extern "C" void on_menu()
     ImGui::Checkbox("Lock to current hero", &g_heroLock);
     if (g_heroLock != prevLock)
     {
-        if (g_heroLock) g_heroId = GetCurrentHero();
+        if (g_heroLock) g_heroId = LocalPlayer().GetHeroId();
         else            g_heroId = 0;
     }
 }

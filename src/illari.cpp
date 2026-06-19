@@ -122,7 +122,7 @@ extern "C" void on_frame(float dt)
     (void)dt;
 
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::Illari) return; }  // dormant on any other hero
 
     g_triggerKey.Update();
 
@@ -184,7 +184,7 @@ extern "C" void on_frame(float dt)
 extern "C" void on_render()
 {
     if (!g_enabled || !IsIngame()) return;
-    if (g_heroId != 0 && GetCurrentHero() != g_heroId) return;
+    { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::Illari) return; }  // dormant on any other hero
 
     bool held = g_triggerKey.IsDown();
 
@@ -300,7 +300,7 @@ extern "C" void on_menu()
         ImGui::Checkbox("Lock to current hero", &g_heroLock);
         if (g_heroLock != prevLock)
         {
-            if (g_heroLock) g_heroId = GetCurrentHero();
+            if (g_heroLock) g_heroId = LocalPlayer().GetHeroId();
             else            g_heroId = 0;
         }
     }

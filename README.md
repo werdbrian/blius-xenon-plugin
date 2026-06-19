@@ -4,6 +4,8 @@ Compiled Xenon SDK WASM plugins for Overwatch heroes (clang, wasm32).
 
 Drop the `.wasm` files into your Xenon plugins load folder and reload in-game.
 
+NOTE: I DID NOT MAKE MOST OF THESE PLUGINS.  I GOT THEM FROM @C. 
+
 ## Hero plugins
 
 Each hero plugin is **hero-gated** — it stays fully dormant (no aim, no input) unless you're

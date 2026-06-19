@@ -11,7 +11,7 @@ static float    g_fovRadius       = 200.f;
 static bool     g_drawFov         = true;
 static bool     g_showDebug       = true;   // show on-screen bash/debug overlay
 static int      g_targetMode      = 0;      // 0=closest crosshair, 1=lowest HP
-static int      g_triggerKey      = 1;
+static Hotkey   g_triggerKey(VK::LButton);  // press-to-bind in the menu (defaults to LMB)
 static bool     g_enabled         = true;
 static bool     g_autoMelee       = true;
 static float    g_meleeRange      = 6.f;
@@ -186,7 +186,7 @@ extern "C" void on_load()
     g_drawFov       = Config::GetBool("drawFov",        true);
     g_showDebug     = Config::GetBool("showDebug",      true);
     g_targetMode    = Config::GetInt("targetMode",      0);
-    g_triggerKey    = Config::GetInt("triggerKey",      1);
+    g_triggerKey.Load("triggerKey");
     g_enabled       = Config::GetBool("enabled",        true);
     g_autoMelee     = Config::GetBool("autoMelee",      true);
     g_meleeRange    = Config::GetFloat("meleeRange",    6.f);
@@ -251,7 +251,7 @@ extern "C" void on_unload()
     Config::SetBool("drawFov",        g_drawFov);
     Config::SetBool("showDebug",      g_showDebug);
     Config::SetInt("targetMode",      g_targetMode);
-    Config::SetInt("triggerKey",      g_triggerKey);
+    g_triggerKey.Save("triggerKey");
     Config::SetBool("enabled",        g_enabled);
     Config::SetBool("autoMelee",      g_autoMelee);
     Config::SetFloat("meleeRange",    g_meleeRange);
@@ -344,8 +344,9 @@ extern "C" void on_frame(float dt)
     if (!g_enabled || !IsIngame()) return;
     { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::Brigitte) return; }  // dormant on any other hero
 
+    g_triggerKey.Update();                 // refresh keybind edge-detection once per frame
     float now        = GetTime();
-    bool  keyDown    = IsKeyDown(g_triggerKey);
+    bool  keyDown    = g_triggerKey.IsDown();
     bool  held       = keyDown;
 
     // HP drop — triggers auto reaction (face attacker) and auto block (raise shield)
@@ -849,7 +850,7 @@ extern "C" void on_render()
         g_dbgEnemyInFov   = inFov;
     }
 
-    bool triggerHeld  = IsKeyDown(g_triggerKey);
+    bool triggerHeld  = g_triggerKey.IsDown();
     float now2        = GetTime();
     bool duelEngaged  = g_duelMode &&
         (g_reactionTimer > 0.f || (g_targetValid && g_targetDist <= g_duelRange));
@@ -1056,7 +1057,7 @@ extern "C" void on_menu()
         ImGui::Checkbox("Draw FOV",           &g_drawFov);
         ImGui::Checkbox("Show Debug Overlay", &g_showDebug);
         ImGui::Combo("Target Mode", &g_targetMode, "Closest Distance\0Lowest HP\0Closest Crosshair\0");
-        ImGui::SliderInt("Trigger Key",       &g_triggerKey,   0,     31);
+        g_triggerKey.Render("Trigger Key");   // click, then press a key to bind it
         ImGui::Separator();
         ImGui::SliderFloat("Melee Range (m)",     &g_meleeRange,       2.f,   10.f);
         ImGui::SliderFloat("Melee FOV Radius",    &g_meleeFovRadius,   50.f,  600.f);

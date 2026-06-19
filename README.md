@@ -7,6 +7,8 @@ source is in [`src/`](src/).
 Drop the `.wasm` files into your Xenon plugins load folder and reload in-game.
 Each plugin reads/writes its settings via the in-game menu (`on_menu`).
 
+> **Status key:** ✅ working / tested · 🟡 early version, may be unfinished or untested.
+
 ## How the plugins work (shared concepts)
 
 - **Hero gating** — hero plugins stay fully dormant (no aim, no input) unless you're
@@ -18,97 +20,133 @@ Each plugin reads/writes its settings via the in-game menu (`on_menu`).
   `on_menu` draws the settings panel.
 - **Input** — abilities are simulated with `PressGameButton` / `ReleaseGameButton`.
   There's no one-shot "pulse," so taps are done with a short hold window.
+- **Keybinds** — most plugins use a click-to-bind keybind widget: click the keybind in
+  the menu, then press the key/mouse button you want and it captures it (no key numbers).
 
 ---
 
-NOTE: I DID NOT MAKE MOST OF THESE PLUGINS.  I GOT THEM FROM @C. 
+NOTE: I DID NOT MAKE MOST OF THESE PLUGINS.  I GOT THEM FROM @C.
 
 ## Hero plugins
 
-### `brigitte` — Brigitte
-Auto Rocket Flail (melee), auto Whip Shot with target prediction, auto Shield Bash,
-auto Barrier block on incoming damage, and Repair Pack auto-heal for low-HP allies.
-The Shield Bash is a two-phase action (raise shield on RMouse → bash on LMouse) and
-can be prioritized over melee against low-HP targets. The shield is held by a single
-unified handler so it never gets re-pressed mid-action.
+### `brigitte` — Brigitte ✅
+- **Auto Rocket Flail** — auto-melees (LMB) the aim target while the trigger key is held
+  and a valid target is in melee range.
+- **Auto Whip Shot** — fires Whip Shot (Skill1) at mid-range targets with travel-time
+  prediction; configurable min/max range so it doesn't waste the cooldown point-blank.
+- **Shield Bash** — two-phase action: raise Barrier (RMouse) → bash (LMB while shield is
+  up). Can be prioritized over melee against low-HP targets, and is skipped when too many
+  enemies are grouped around the target (configurable). Shield is driven by one unified
+  handler so RMB is held continuously and never re-pressed mid-bash.
+- **Auto Block** — raises Barrier automatically when you take incoming damage, and turns
+  to face the attacker.
+- **Repair Pack** — auto-throws Repair Pack (Skill2) to the lowest-HP ally below a
+  per-role HP threshold (separate tank vs. DPS/support cutoffs) within range.
+- **Targeting / overlay** — target modes (closest distance / lowest HP / closest to
+  crosshair), FOV circle, and an optional on-screen debug overlay.
 
-### `genji` — Genji *(hero-specific)*
-**Dash Combo:** one key press runs Swift Strike → re-aim → RMouse → Melee as a state
-machine. **Dash Assist:** when you manually dash, it locks the target you were looking
-at and optionally auto-shoots/melees after. Includes a point-blank "close aim" upward
-nudge, plus tunable FOV, aim bone, delays, and smoothing.
-
-### `mei` — Mei
-Auto Ice Block (Cryo-Freeze / Skill1) the moment your HP drops to a configurable
-percentage. Single HP-% slider; optional on-screen debug readout.
-
-### `tracer` — Tracer V2 *(hero-specific)*
-Aimbot (FOV, smoothing, visible-only, target-lock, max distance) plus a Blink Assist
-that keeps aim on target through blinks. Debug HUD shows skill/target state.
-
-### `roadhog` — Roadhog V1 *(hero-specific)*
-Hook aimbot — flicks to the best target in FOV when you hook, with configurable flick
-time, aim bone, FOV, smoothing, visible-only, and max distance. On-screen hook indicator.
+### `mei` — Mei ✅
+- **Auto Ice Block** — pops Cryo-Freeze (Skill1) the instant your HP drops to/below a
+  configurable percentage. Single HP-% slider.
+- **Debug overlay** — optional on-screen readout of HP, cooldown, and active state.
 
 ### `venture` — Venture
-Bone aim + a tap-trigger combo (LMB → Drill Dash → LMB), auto-melee, and smart Burrow.
+- **Bone aim** — aim assist onto a selected bone while the trigger is held.
+- **Drill Dash combo** — a tap-trigger sequence (LMB → Drill Dash → LMB).
+- **Auto-melee** + **smart Burrow** usage.
 
 ### `zenyatta` — Zenyatta
-Bone aim + auto-fire (LMB/RMB volley), auto-Discord Orb (Skill2), auto-Harmony Orb
-(Skill1), a kick combo, and auto-Transcendence when low on HP.
+- **Bone aim + auto-fire** — aims and fires the LMB/RMB orb volley.
+- **Auto Discord Orb** (Skill2) onto the current target and **auto Harmony Orb** (Skill1)
+  onto allies.
+- **Kick combo** for close-range melee.
+- **Auto Transcendence** — fires the ultimate automatically when your HP gets low.
 
 ### `vendetta` — Vendetta
-Aim assist + auto-melee, with auto Soaring Slice (E) when a target is in gap-close
-range. Uses arc-aim distance compensation so the fixed-distance ability lands on target.
+- **Aim assist + auto-melee** (LMB) while the trigger is held.
+- **Auto Soaring Slice (E)** when a target is in gap-close range, using arc-aim distance
+  compensation so the fixed-distance ability lands on target instead of overshooting.
 
 ### `junker_queen` — Junker Queen
-Auto Commanding Shout on low HP, auto-shoot (held key), auto Carnage blade (key +
-conditions), and proximity auto-melee.
+- **Auto Commanding Shout** when your HP is low.
+- **Auto-shoot** while the trigger key is held.
+- **Auto Carnage blade** when the key is held and conditions are met.
+- **Proximity auto-melee.**
 
 ### `wuyang` — Wu Yang
-Hold LMB to fire a steerable projectile; the plugin holds LMB and steers the projectile
-toward your current aim by estimating its world position each frame.
+- **Steerable projectile** — hold LMB to fire and steer the projectile toward your current
+  aim; the plugin holds LMB and re-estimates the projectile's world position each frame to
+  keep it tracking.
 
 ### `hazard` — Hazard
-Hold the trigger key: if a target is within slash range and Violent Leap is ready it
-leaps (Shift), then auto-executes the slash. (Leap is a two-part move — the plugin only
-auto-slashes the second half.)
+- **Auto Violent Leap + slash** — hold the trigger key; if a target is within slash range
+  and Violent Leap is ready, it leaps (Shift) and then auto-executes the slash. Leap is a
+  two-part move, so the plugin only auto-fires the second (slash) half — you initiate the
+  leap.
 
 ### `illari` — Illari
-Hold the trigger key for aim assist + auto primary fire once the solar rifle charge is
-at/above a threshold.
+- **Aim assist + auto primary fire** — hold the trigger key; auto-fires once the solar
+  rifle charge is at/above a configurable threshold so shots aren't wasted under-charged.
 
 ### `zarya` — Zarya
-Primary beam aim assist + secondary orb prediction + auto Particle Barrier on incoming
-damage.
+- **Primary beam aim assist.**
+- **Secondary orb prediction** — leads moving targets with the projectile.
+- **Auto Particle Barrier** on incoming damage.
 
-### `widowmaker` — Widowmaker
-Aim assist; target selection runs in `on_render` (where WorldToScreen is valid) and the
-cached target is aimed in `on_frame`. Several iteration builds (`widowmaker_v1`–`v4`)
-are kept as `.wasm` history.
+### `genji` — Genji V1 🟡
+- **Dash Combo** — one key press runs the full sequence as a state machine: snap aim →
+  Swift Strike (Skill1) → wait for the dash to finish → re-aim the selected bone → RMouse
+  → Melee.
+- **Dash Assist** — when *you* manually dash, it locks the target you were looking at and
+  optionally auto-RClicks / auto-melees after the dash lands.
+- **Close Aim Adjust** — nudges aim upward at point-blank range (optionally scaled by
+  distance with a falloff curve).
+- Tunable FOV, aim bone (head/neck/chest/closest), shoot/melee delays, max distance, and
+  smoothing.
+- 🟡 Early V1 import — not fully tested.
+
+### `tracer` — Tracer V2 🟡
+- **Aimbot** — FOV, smoothing, visible-only, target-lock, and max-distance options.
+- **Blink Assist** — keeps aim on the locked target through blinks (separate blink/turn
+  smoothing).
+- **Debug HUD** showing skill/target state.
+- 🟡 Early V2 import — not fully tested.
+
+### `roadhog` — Roadhog V1 🟡
+- **Hook Aimbot** — flicks to the best target in FOV when you hook, with configurable
+  flick time, aim bone, FOV, smoothing, visible-only, and max distance.
+- **Hook indicator** — on-screen indicator with adjustable padding.
+- 🟡 Early V1 import — not fully tested.
+
+### `widowmaker` — Widowmaker 🟡
+- **Aim assist** — target selection runs in `on_render` (where WorldToScreen is valid) and
+  the cached target is aimed in `on_frame`.
+- 🟡 Multiple iteration builds (`widowmaker_v1`–`v4`) are kept as `.wasm` history; these
+  are work-in-progress and not all are tested.
 
 ---
 
 ## Utility / multi-hero
 
-### `auto_block` — Auto Block
-Reactively pops a defensive ability when an incoming CC/damage threat is detected
-(Mei freeze, Tracer pulse, Reaper, Doomfist, Moira, Sigma, etc.). Hero-agnostic.
+### `auto_block` — Auto Block ✅
+- Reactively pops a defensive ability when an incoming CC/damage threat is detected
+  (Mei freeze, Tracer pulse bomb, Reaper, Doomfist, Moira, Sigma, etc.). Hero-agnostic, so
+  it runs on any hero with a relevant defensive ability.
 
-### `enemy_esp` — Visuals / ESP
-Box / skeleton / health-bar / snapline ESP with hero names, distance, distance fading,
-visible-only filtering, and a max render distance.
+### `enemy_esp` — Visuals / ESP ✅
+- Box / skeleton / health-bar / snapline ESP, with hero names, distance text, dynamic
+  distance fading, visible-only filtering, and a max render distance.
 
-### `enemy_outlines` — Outlines
-Applies in-game outline/glow to players with configurable colors.
+### `enemy_outlines` — Outlines ✅
+- Applies in-game outline/glow to players, with configurable colors.
 
-### `minimap` — Minimap
-2D overhead wall map built from raycasts; settled geometry is cached per map ID and
-reloaded next session, so it isn't recast every frame.
+### `minimap` — Minimap ✅
+- 2D overhead wall map built from raycasts; settled geometry is cached per map ID and
+  reloaded next session, so it isn't recast every frame.
 
-### `ability_tracker` — Ability Tracker
-Per-enemy ability/cooldown indicators color-coded by state (ready / cooldown / active /
-ultimate) across a large hero table.
+### `ability_tracker` — Ability Tracker ✅
+- Per-enemy ability/cooldown indicators, color-coded by state (ready / cooldown / active /
+  ultimate) across a large hero table.
 
 ---
 
@@ -129,4 +167,4 @@ These were used while building the SDK bindings — handy references, not gamepl
 
 ---
 
-⚠️ Provided as-is for educational/research use.
+⚠️ Provided as-is for educational/research use. Plugins marked 🟡 are early/untested.

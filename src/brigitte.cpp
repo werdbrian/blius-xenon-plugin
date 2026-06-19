@@ -78,6 +78,14 @@ static constexpr float kRaiseDur  = 0.15f;  // hold RMouse before pressing Skill
 static constexpr float kBashHold  = 0.12f;  // hold LMouse for bash
 static constexpr float kBashCd    = 5.f;    // manual bash cooldown tracking
 
+// Melee-cancel: in melee range, land one flail swing BEFORE bashing/whipping. The
+// swing connects, then the bash/whip cancels its recovery animation for extra damage.
+static bool   g_meleeCancel     = true;
+static float  g_meleeCancelTime = 0.35f;  // hold the swing this long (let it connect) before canceling
+static float  g_meleeCancelEnd  = 0.f;    // active swing-window end time
+static bool   g_meleeCancelDone = false;  // latched: swing landed, ability may now fire
+static bool   g_dbgPreMelee     = false;  // overlay debug
+
 // Whip Shot hold timer
 static float    g_whipHoldEnd     = 0.f;
 static float    g_whipPreAimEnd   = 0.f;
@@ -199,6 +207,8 @@ extern "C" void on_load()
     g_autoBash      = Config::GetBool("autoBash",       true);
     g_bashRange     = Config::GetFloat("bashRange",     5.f);
     g_bashKillHp    = Config::GetFloat("bashKillHp",    200.f);
+    g_meleeCancel     = Config::GetBool("meleeCancel",      true);
+    g_meleeCancelTime = Config::GetFloat("meleeCancelTime", 0.35f);
     g_autoBlock     = Config::GetBool("autoBlock",      true);
     g_duelMode        = Config::GetBool("duelMode",         false);
     g_duelRange       = Config::GetFloat("duelRange",       8.f);
@@ -264,6 +274,8 @@ extern "C" void on_unload()
     Config::SetBool("autoBash",       g_autoBash);
     Config::SetFloat("bashRange",     g_bashRange);
     Config::SetFloat("bashKillHp",    g_bashKillHp);
+    Config::SetBool("meleeCancel",       g_meleeCancel);
+    Config::SetFloat("meleeCancelTime",  g_meleeCancelTime);
     Config::SetBool("autoBlock",      g_autoBlock);
     Config::SetBool("duelMode",           g_duelMode);
     Config::SetFloat("duelRange",         g_duelRange);
@@ -310,6 +322,8 @@ extern "C" void on_hero_changed(uint64_t)
     g_repairHoldEnd = 0.f;
     g_repairCdEnd   = 0.f;
     g_bashPhase           = BA_IDLE;
+    g_meleeCancelEnd      = 0.f;
+    g_meleeCancelDone     = false;
     g_postBashThrowStored = false;
     g_postBashHoldEnd     = 0.f;
     g_combo               = CB_IDLE;
@@ -587,6 +601,8 @@ extern "C" void on_frame(float dt)
         ReleaseGameButton(GameButton::Skill1);
         g_whipHoldEnd   = 0.f;
         g_whipPreAimEnd = 0.f;
+        g_meleeCancelEnd  = 0.f;
+        g_meleeCancelDone = false;
         if (!repairFiring) AimResetSmoothing();
         return;
     }
@@ -616,12 +632,41 @@ extern "C" void on_frame(float dt)
     g_dbgBashGroupOk = bashGroupOk;
     g_dbgBashWant    = wantBash;
 
-    if (wantBash && g_bashPhase == BA_IDLE && bashReady)
+    // ── Melee-cancel: if we're in melee range and a bash (or whip) is about to fire,
+    // land one flail swing FIRST, then let the ability cancel its recovery. The actual
+    // LMouse swing is driven by the normal melee branch below — here we just hold the
+    // ability back until the swing has had g_meleeCancelTime to connect.
+    bool meleeReady = g_autoMelee && inMelee && g_targetValid
+                      && !g_targetShielded && g_targetBarrier <= 0.f;
+    // Raw "ability wants to start this frame" (whip's range normally doesn't overlap
+    // melee range, so in practice this gates the bash — but it covers whip too if the
+    // whip min distance is lowered below melee range).
+    bool whipWantsRaw = g_autoWhip && g_targetValid && g_targetVisible
+                        && g_targetDist >= g_whipMinDist && g_targetDist <= g_whipMaxDist
+                        && g_targetHp > 0.f && g_targetHp <= g_whipKillHp
+                        && g_targetBarrier <= 0.f && !g_targetShielded;
+    bool abilityImminent = ((wantBash && bashReady) || whipWantsRaw)
+                           && g_bashPhase == BA_IDLE && g_whipHoldEnd <= 0.f
+                           && g_postBashHoldEnd <= 0.f;
+
+    bool preMeleeActive = false;
+    if (g_meleeCancel && meleeReady && abilityImminent && !g_meleeCancelDone)
+    {
+        if (g_meleeCancelEnd <= 0.f) g_meleeCancelEnd = now + g_meleeCancelTime;  // begin swing
+        if (now < g_meleeCancelEnd)  preMeleeActive = true;                        // swinging — hold ability
+        else { g_meleeCancelEnd = 0.f; g_meleeCancelDone = true; }                 // swing landed — release ability
+    }
+    // Once the ability is no longer imminent (it fired, or target left), re-arm for next time.
+    if (!abilityImminent) { g_meleeCancelEnd = 0.f; g_meleeCancelDone = false; }
+    g_dbgPreMelee = preMeleeActive;
+
+    if (wantBash && g_bashPhase == BA_IDLE && bashReady && !preMeleeActive)
     {
         g_bashPhase    = BA_RAISING;
         g_bashPhaseT   = 0.f;
         g_whipPreAimEnd = 0.f;
         g_whipHoldEnd   = 0.f;
+        g_meleeCancelDone = false;   // re-arm the pre-swing for the next bash
     }
 
     // RMouse (shield) is driven once, by the unified handler at the end of this
@@ -672,7 +717,7 @@ extern "C" void on_frame(float dt)
     // -------------------------------------------------------
     bool whipReady    = false;
     bool whipPreAiming = false;
-    bool whipConditions = !bashActive && !comboWaiting && keyDown && g_autoWhip && g_targetValid && g_targetVisible
+    bool whipConditions = !bashActive && !comboWaiting && !preMeleeActive && keyDown && g_autoWhip && g_targetValid && g_targetVisible
         && g_targetDist >= g_whipMinDist && g_targetDist <= g_whipMaxDist
         && g_targetHp > 0.f && g_targetHp <= g_whipKillHp
         && g_targetBarrier <= 0.f && !g_targetShielded;
@@ -699,6 +744,7 @@ extern "C" void on_frame(float dt)
             g_whipHoldEnd   = now + kWhipHold;
             g_whipPreAimEnd = 0.f;
             whipReady = true;
+            g_meleeCancelDone = false;   // re-arm the pre-swing for the next whip
         }
     }
     else if (!whipConditions && g_whipHoldEnd <= 0.f)
@@ -824,8 +870,26 @@ extern "C" void on_render()
            .put(" dist:").putFloat(g_targetDist, 1)
            .put("/").putFloat(g_bashRange, 1)
            .put(" hp:").putFloat(g_targetHp, 0)
-           .put("/").putFloat(g_bashKillHp, 0);
+           .put("/").putFloat(g_bashKillHp, 0)
+           .put("  preMelee:").put(g_dbgPreMelee ? "SWING" : (g_meleeCancelDone ? "done" : "-"));
         Draw::TextShadow(bx, by, Color::White(), bt2.c_str());
+
+        // Repair-pack scan readout (counts are from last frame's ally scan)
+        by += 18.f;
+        TextBuilder<128> rt;
+        rt.put("REPAIR ").put(g_repairTarget >= 0 ? "TGT" : "----")
+          .put(" auto:").put(g_autoRepair ? "Y" : "n")
+          .put(" fire:").put(g_dbgRepairFiring ? "Y" : "n")
+          .put(" allies:").putInt(g_dbgAllyCount);
+        Draw::TextShadow(bx, by, g_repairTarget >= 0 ? Color::Green() : Color(255,180,0,255), rt.c_str());
+        by += 18.f;
+        TextBuilder<128> rt2;
+        rt2.put("rej hp:").putInt(g_dbgRejHp)
+           .put(" rng:").putInt(g_dbgRejRange)
+           .put(" los:").putInt(g_dbgRejLOS)
+           .put("  closest:").putFloat(g_dbgClosestDist, 1).put("m ")
+           .putFloat(g_dbgClosestHpPct, 0).put("%");
+        Draw::TextShadow(bx, by, Color::White(), rt2.c_str());
     }
 
     // Count all players unconditionally to detect when game filters the array
@@ -878,8 +942,12 @@ extern "C" void on_render()
             float threshold = (p.GetHealthMax() >= g_tankHpThreshold) ? g_repairHpPctTank : g_repairHpPctDps;
             if (p.IsFullHealth() || hpPct > threshold) { g_dbgRejHp++;    continue; }
             if (d > g_repairRange)                      { g_dbgRejRange++; continue; }
-            if (!p.IsVisible())                         { g_dbgRejLOS++;   continue; }  // don't heal allies through walls
             Vector3 allyHead = p.GetHeadPos();
+            // Only heal allies in line of sight — don't throw packs through walls.
+            // IsVisible() isn't reliable for allies, so use an LOS raycast (same call
+            // brigitte already uses for g_targetShielded). Skip the test if head pos is
+            // invalid rather than wrongly rejecting the ally.
+            if (allyHead.IsValid() && !IsPointVisible(eyePos, allyHead)) { g_dbgRejLOS++; continue; }
             Vector2 allyScreen;
             bool inFov = allyHead.IsValid() && WorldToScreen(allyHead, allyScreen)
                          && ScreenDist(allyScreen, center) <= g_fovRadius;
@@ -1074,6 +1142,9 @@ extern "C" void on_menu()
         ImGui::SliderFloat("Bash Range (m)",       &g_bashRange,          1.f,  10.f);
         ImGui::SliderFloat("Post-Bash Throw (m)", &g_postBashThrowRange, 1.f,  30.f);
         ImGui::SliderFloat("Bash Kill HP",    &g_bashKillHp,   0.f,   500.f);
+        ImGui::Checkbox("Melee-Cancel (swing before bash/whip)", &g_meleeCancel);
+        if (g_meleeCancel)
+            ImGui::SliderFloat("Melee-Cancel Time (s)", &g_meleeCancelTime, 0.05f, 1.0f);
         ImGui::SliderFloat("Block HP Drop",   &g_blockHpDrop,  1.f,   50.f);
         ImGui::SliderFloat("Repair Tank HP %", &g_repairHpPctTank, 10.f, 99.f);
         ImGui::SliderFloat("Repair DPS HP %",  &g_repairHpPctDps,  10.f, 99.f);

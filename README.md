@@ -55,19 +55,19 @@ NOTE: I DID NOT MAKE MOST OF THESE PLUGINS.  I GOT THEM FROM @C.
 - **Drill Dash combo** — a tap-trigger sequence (LMB → Drill Dash → LMB).
 - **Auto-melee** + **smart Burrow** usage.
 
-### `zenyatta` — Zenyatta
+### `zenyatta` — Zenyatta 🟡
 - **Bone aim + auto-fire** — aims and fires the LMB/RMB orb volley.
 - **Auto Discord Orb** (Skill2) onto the current target and **auto Harmony Orb** (Skill1)
   onto allies.
 - **Kick combo** for close-range melee.
 - **Auto Transcendence** — fires the ultimate automatically when your HP gets low.
 
-### `vendetta` — Vendetta
+### `vendetta` — Vendetta 🟡
 - **Aim assist + auto-melee** (LMB) while the trigger is held.
 - **Auto Soaring Slice (E)** when a target is in gap-close range, using arc-aim distance
   compensation so the fixed-distance ability lands on target instead of overshooting.
 
-### `junker_queen` — Junker Queen
+### `junker_queen` — Junker Queen  ✅ 
 - **Auto Commanding Shout** when your HP is low.
 - **Auto-shoot** while the trigger key is held.
 - **Auto Carnage blade** when the key is held and conditions are met.
@@ -78,7 +78,7 @@ NOTE: I DID NOT MAKE MOST OF THESE PLUGINS.  I GOT THEM FROM @C.
   aim; the plugin holds LMB and re-estimates the projectile's world position each frame to
   keep it tracking.
 
-### `hazard` — Hazard - untested
+### `hazard` — Hazard - 🟡
 - **Auto Violent Leap + slash** — hold the trigger key; if a target is within slash range
   and Violent Leap is ready, it leaps (Shift) and then auto-executes the slash. Leap is a
   two-part move, so the plugin only auto-fires the second (slash) half — you initiate the
@@ -94,7 +94,7 @@ NOTE: I DID NOT MAKE MOST OF THESE PLUGINS.  I GOT THEM FROM @C.
 - **Secondary orb prediction** — leads moving targets with the projectile.
 - **Auto Particle Barrier** on incoming damage.
 
-### `genji` — Genji V1 🟡
+### `genji` — Genji V1  ✅ 
 - **Dash Combo** — one key press runs the full sequence as a state machine: snap aim →
   Swift Strike (Skill1) → wait for the dash to finish → re-aim the selected bone → RMouse
   → Melee.
@@ -113,7 +113,7 @@ NOTE: I DID NOT MAKE MOST OF THESE PLUGINS.  I GOT THEM FROM @C.
 - **Debug HUD** showing skill/target state.
 - 🟡 Early V2 import — not fully tested.
 
-### `roadhog` — Roadhog V1 🟡
+### `roadhog` — Roadhog V1 ✅ 
 - **Hook Aimbot** — flicks to the best target in FOV when you hook, with configurable
   flick time, aim bone, FOV, smoothing, visible-only, and max distance.
 - **Hook indicator** — on-screen indicator with adjustable padding.

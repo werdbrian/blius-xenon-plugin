@@ -13,8 +13,8 @@ using namespace xenon;
 static void PulseGameButton(uint32_t btn) { PressGameButton(btn); ReleaseGameButton(btn); }
 
 XENON_PLUGIN_INFO(
-    "genjiv1", "Genji V1", "c", "", "1.0", HeroId::Genji,
-    PluginFlags::HasOverlay | PluginFlags::HasMenu | PluginFlags::HeroSpecific
+    "genjiv1", "Genji V1", "c", "", "1.0", 0,
+    PluginFlags::HasOverlay | PluginFlags::HasMenu
 )
 
 // â”€â”€ Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -200,12 +200,13 @@ static void DebugHud()
     Draw::TextShadow(x, y, Color::White(), "[ Genji V1 ]"); y += 18.f;
 
     // â”€â”€ Skill states (local player) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    SkillCooldown s1 = GetSkill1Cooldown();
-    SkillCooldown s2 = GetSkill2Cooldown();
-    bool s1Active  = IsSkill1Active();
-    bool s2Active  = IsSkill2Active();
-    bool ultActive = IsUltActive();
-    bool ultReady  = IsUltReady();
+    Entity lp = LocalPlayer();
+    SkillCooldown s1 = lp.GetSkill1Cooldown();
+    SkillCooldown s2 = lp.GetSkill2Cooldown();
+    bool s1Active  = lp.IsSkill1Active();
+    bool s2Active  = lp.IsSkill2Active();
+    bool ultActive = lp.IsUltActive();
+    bool ultReady  = lp.GetUltCharge() >= 100.f;
 
     // Swift Strike
     if (s1Active) {
@@ -233,7 +234,7 @@ static void DebugHud()
     } else if (ultReady) {
         Draw::TextShadow(x, y, Color::Orange(), "Blade:   READY"); y += 16.f;
     } else {
-        tb.put("Blade:   ").putFloat(GetUltCharge(), 0).put("%");
+        tb.put("Blade:   ").putFloat(lp.GetUltCharge(), 0).put("%");
         Draw::TextShadow(x, y, Color(200, 200, 200, 200), tb.c_str()); y += 16.f; tb.clear();
     }
 
@@ -396,6 +397,8 @@ extern "C" void on_menu()
 
 extern "C" void on_frame(float)
 {
+    { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::Genji) return; }  // dormant on any other hero
+
     g_comboKey.Update();
 
     int count = GetPlayerCount();
@@ -422,6 +425,9 @@ extern "C" void on_render()
 {
     if (!g_enabled) return;
 
+    Entity lp = LocalPlayer();
+    if (!lp.IsValid() || lp.GetHeroId() != HeroId::Genji) return;  // dormant on any other hero
+
     float now = GetTime();
 
     // â”€â”€ Re-resolve combo target index from stable entity ID â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -440,7 +446,7 @@ extern "C" void on_render()
 
     if (comboRising && g_comboPhase == CP_IDLE)
     {
-        SkillCooldown s1 = GetSkill1Cooldown();
+        SkillCooldown s1 = lp.GetSkill1Cooldown();
         WeaponInfo    wi{};
         GetWeaponInfo(InputFlag::SecondaryFire, wi);
 
@@ -480,8 +486,8 @@ extern "C" void on_render()
     // â”€â”€ CP_DETECT: watch for Swift Strike to finish, then snap aim â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (g_comboPhase == CP_DETECT)
     {
-        bool          skill1Active = IsSkill1Active();
-        SkillCooldown s1cd         = GetSkill1Cooldown();
+        bool          skill1Active = lp.IsSkill1Active();
+        SkillCooldown s1cd         = lp.GetSkill1Cooldown();
 
         // Latch via active state (animation caught)
         if (skill1Active) g_skill1WasActive = true;
@@ -542,8 +548,8 @@ extern "C" void on_render()
 
     // â”€â”€ Dash assist â€” manual Swift Strike tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {
-        bool          cdNow        = GetSkill1Cooldown().IsOnCooldown();
-        bool          skill1Active = IsSkill1Active();
+        bool          cdNow        = lp.GetSkill1Cooldown().IsOnCooldown();
+        bool          skill1Active = lp.IsSkill1Active();
 
         // Re-resolve stable target ID each frame during assist
         if (g_daPhase != DA_IDLE && g_daTargetId != 0)

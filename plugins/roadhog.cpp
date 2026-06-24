@@ -2,8 +2,8 @@
 using namespace xenon;
 
 XENON_PLUGIN_INFO(
-    "hogv1", "Roadhog V1", "c", "", "1.0", HeroId::Roadhog,
-    PluginFlags::HasOverlay | PluginFlags::HasMenu | PluginFlags::HeroSpecific
+    "hogv1", "Roadhog V1", "c", "", "1.0", 0,
+    PluginFlags::HasOverlay | PluginFlags::HasMenu
 )
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -16,7 +16,7 @@ static float g_fovDeg       = 90.f;
 static bool  g_showFov      = true;
 static Color g_fovColor     = Color(255, 140, 40, 80);
 static float g_smoothing    = 0.f;
-static bool  g_visOnly      = false;
+static bool  g_visOnly      = true;
 static float g_maxDist      = 20.f;
 static float g_flickTime    = 0.35f;
 
@@ -145,8 +145,9 @@ static void DebugHud()
 
     Draw::TextShadow(x, y, Color::White(), "[ Roadhog V1 ]"); y += 18.f;
 
-    SkillCooldown s1 = GetSkill1Cooldown();
-    bool hookActive  = IsSkill1Active();
+    Entity lp = LocalPlayer();
+    SkillCooldown s1 = lp.GetSkill1Cooldown();
+    bool hookActive  = lp.IsSkill1Active();
 
     if (hookActive) {
         Draw::TextShadow(x, y, Color::Cyan(), "Hook:  ACTIVE"); y += 16.f;
@@ -161,8 +162,8 @@ static void DebugHud()
     tb.put("s1 en=").putInt(s1.enabled ? 1 : 0).put(" cur=").putFloat(s1.current, 2);
     Draw::TextShadow(x, y, Color(180, 180, 180, 160), tb.c_str()); y += 14.f; tb.clear();
 
-    SkillCooldown s2 = GetSkill2Cooldown();
-    if (IsSkill2Active()) {
+    SkillCooldown s2 = lp.GetSkill2Cooldown();
+    if (lp.IsSkill2Active()) {
         Draw::TextShadow(x, y, Color::Cyan(), "Breather: ACTIVE"); y += 16.f;
     } else if (s2.IsOnCooldown()) {
         tb.put("Breather: ").putFloat(s2.current, 1).put("s");
@@ -230,7 +231,7 @@ extern "C" void on_load()
     g_showFov          = Config::GetBool("showFov",          true);
     g_fovColor         = Config::GetColor("fovColor",        Color(255, 140, 40, 80));
     g_smoothing        = Config::GetFloat("smoothing",       0.f);
-    g_visOnly          = Config::GetBool("visOnly",          false);
+    g_visOnly          = Config::GetBool("visOnly",          true);
     g_maxDist          = Config::GetFloat("maxDist",         20.f);
     g_flickTime        = Config::GetFloat("flickTime",       0.35f);
     g_aimBone          = (int)Config::GetFloat("aimBone",    0.f);
@@ -357,6 +358,8 @@ extern "C" void on_menu()
 
 extern "C" void on_frame(float)
 {
+    { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::Roadhog) return; }  // dormant on any other hero
+
     int count = GetPlayerCount();
     g_entityCount = count < 32 ? count : 32;
     for (int i = 0; i < g_entityCount; ++i)
@@ -401,9 +404,10 @@ extern "C" void on_frame(float)
     if (g_autoBreather && g_localMaxHp > 0.f)
     {
         float hpPct      = g_localHp / g_localMaxHp * 100.f;
-        SkillCooldown s2 = GetSkill2Cooldown();
+        Entity lp        = LocalPlayer();
+        SkillCooldown s2 = lp.GetSkill2Cooldown();
         bool needHeal    = hpPct > 0.f && hpPct < g_breatherHpPct;
-        bool skillReady  = !s2.IsOnCooldown() && !IsSkill2Active();
+        bool skillReady  = !s2.IsOnCooldown() && !lp.IsSkill2Active();
         if (needHeal && skillReady)
             PressGameButton(GameButton::Skill2);
         else
@@ -418,6 +422,8 @@ extern "C" void on_frame(float)
 extern "C" void on_render()
 {
     if (!g_enabled) return;
+
+    { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::Roadhog) return; }  // dormant on any other hero
 
     float now        = GetTime();
     bool  hookActive = IsSkill1Active();

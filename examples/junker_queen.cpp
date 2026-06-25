@@ -12,6 +12,11 @@ static float g_stiffness        = 30.f;
 static float g_fovRadius        = 200.f;
 static float g_hitboxScale      = 1.0f;
 
+// Target selection
+static int   g_targetMode       = 0;   // 0 = FOV (closest inside crosshair FOV), 1 = closest to hero, 2 = lowest HP
+static bool  g_drawFov          = true;
+static int   g_fovCenter        = 0;   // FOV draw style: 0 = ring at crosshair, 1 = ring on each enemy
+
 // Auto shout
 static bool  g_autoShout        = true;
 static float g_shoutHpThreshold = 50.f;  // % HP
@@ -105,6 +110,9 @@ extern "C" void on_load()
     g_stiffness        = Config::GetFloat("stiffness",       30.f);
     g_fovRadius        = Config::GetFloat("fovRadius",       200.f);
     g_hitboxScale      = Config::GetFloat("hitboxScale",     1.0f);
+    g_targetMode       = Config::GetInt("targetMode",        0);
+    g_drawFov          = Config::GetBool("drawFov",          true);
+    g_fovCenter        = Config::GetInt("fovCenter",         0);
     g_autoShout        = Config::GetBool("autoShout",        true);
     g_shoutHpThreshold = Config::GetFloat("shoutHpThresh",   50.f);
     g_autoShoot        = Config::GetBool("autoShoot",        true);
@@ -140,6 +148,9 @@ extern "C" void on_unload()
     Config::SetFloat("stiffness",     g_stiffness);
     Config::SetFloat("fovRadius",     g_fovRadius);
     Config::SetFloat("hitboxScale",   g_hitboxScale);
+    Config::SetInt("targetMode",      g_targetMode);
+    Config::SetBool("drawFov",        g_drawFov);
+    Config::SetInt("fovCenter",       g_fovCenter);
     Config::SetBool("autoShout",      g_autoShout);
     Config::SetFloat("shoutHpThresh", g_shoutHpThreshold);
     Config::SetBool("autoShoot",      g_autoShoot);
@@ -340,6 +351,35 @@ extern "C" void on_render()
     if (!g_enabled || !IsIngame()) return;
     { Entity lp = LocalPlayer(); if (!lp.IsValid() || lp.GetHeroId() != HeroId::JunkerQueen) return; }  // dormant on any other hero
 
+    Vector2 sz = ScreenSize();
+    if (sz.x <= 0 || sz.y <= 0) return;
+    Vector2 center = { sz.x * 0.5f, sz.y * 0.5f };
+
+    Entity local = LocalPlayer();
+    if (!local.IsValid()) return;
+
+    // Draw FOV — one ring at the crosshair, or a ring on each visible enemy (locked target highlighted)
+    if (g_drawFov)
+    {
+        if (g_fovCenter == 1)
+        {
+            // A FOV circle around each enemy — you target whoever's circle your crosshair is inside.
+            for (Entity p : Players())
+            {
+                if (!p.IsAlive() || p.IsLocal() || !p.IsEnemy() || !p.IsVisible()) continue;
+                Vector3 hw = p.GetBonePos(Bone::Head);
+                Vector2 hs;
+                if (!hw.IsValid() || !WorldToScreen(hw, hs)) continue;
+                bool locked = (p.Index() == g_cachedTarget);
+                Draw::Circle(hs, g_fovRadius, locked ? Color::Cyan() : Color(255, 255, 255, 90), 1.f);
+            }
+        }
+        else
+        {
+            Draw::Circle(center, g_fovRadius, Color(255, 255, 255, 140), 1.5f);
+        }
+    }
+
     bool shootHeld = g_shootKey.IsDown();
     bool bladeHeld = g_bladeKey.IsDown();
 
@@ -351,15 +391,8 @@ extern "C" void on_render()
         return;
     }
 
-    Vector2 sz = ScreenSize();
-    if (sz.x <= 0 || sz.y <= 0) return;
-    Vector2 center = { sz.x * 0.5f, sz.y * 0.5f };
-
-    Entity local = LocalPlayer();
-    if (!local.IsValid()) return;
-
     int32_t bestIdx   = -1;
-    float   bestScore = 99999.f;
+    float   bestScore = 1e30f;
     float   bestHp    = 0.f;
     float   bestDist  = 9999.f;
     Entity  bestEnt;
@@ -377,7 +410,7 @@ extern "C" void on_render()
         if (!WorldToScreen(headWorld, headScreen)) continue;
 
         float sd = ScreenDist(headScreen, center);
-        if (sd > g_fovRadius) continue;
+        if (sd > g_fovRadius) continue;   // FOV always gates (like venture); display style doesn't change this
 
         float dist = WorldDist(local.GetPosition(), p.GetPosition());
 
@@ -390,7 +423,13 @@ extern "C" void on_render()
             continue;
         }
 
-        if (sd < bestScore) { bestScore = sd; bestIdx = p.Index(); bestHp = p.GetHealth(); bestDist = dist; bestEnt = p; }
+        // Score by selected mode (lower = better)
+        float score;
+        if (g_targetMode == 1)      score = dist;                            // closest to hero (world dist)
+        else if (g_targetMode == 2) score = p.GetHealth();                   // lowest HP
+        else                        score = ScreenDist(headScreen, center);  // closest to crosshair
+
+        if (score < bestScore) { bestScore = score; bestIdx = p.Index(); bestHp = p.GetHealth(); bestDist = dist; bestEnt = p; }
     }
 
     Entity tgt;
@@ -502,6 +541,13 @@ extern "C" void on_menu()
     if (!g_enabled) return;
     ImGui::Separator();
 
+    ImGui::Text("Targeting (shared by Auto Shoot + Auto Blade):");
+    ImGui::Combo("Target Mode", &g_targetMode, "FOV (closest to center)\0Closest to Hero\0Lowest HP\0");
+    ImGui::Checkbox("Draw FOV", &g_drawFov);
+    ImGui::Combo("FOV Display", &g_fovCenter, "Crosshair Ring\0Ring Each Enemy\0");
+    ImGui::SliderFloat("FOV Radius", &g_fovRadius, 10.f, 500.f);
+    ImGui::Separator();
+
     ImGui::Checkbox("Auto Shout (low HP)", &g_autoShout);
     if (g_autoShout)
         ImGui::SliderFloat("Shout HP %", &g_shoutHpThreshold, 10.f, 90.f);
@@ -513,7 +559,6 @@ extern "C" void on_menu()
         g_shootKey.Render("Shoot Key");
         ImGui::SliderFloat("Max Range (m)", &g_shootMaxRange, 1.f, 80.f);
         ImGui::SliderFloat("Smoothing", &g_stiffness, 0.f, 1500.f);
-        ImGui::SliderFloat("FOV Radius", &g_fovRadius, 10.f, 500.f);
         ImGui::SliderFloat("Hitbox Scale", &g_hitboxScale, 0.5f, 2.f);
     }
     ImGui::Separator();
